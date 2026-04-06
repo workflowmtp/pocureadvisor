@@ -92,7 +92,7 @@ export default function AnomalyDetailPage() {
           <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-4">Entités liées</h3>
           <div className="space-y-2">
             <InfoRow label="Fournisseur" value={a.supplier ? a.supplier.name : '—'} link={a.supplier ? `/suppliers/${a.supplier.id}` : undefined} />
-            <InfoRow label="Utilisateur" value={a.user ? a.user.fullName + ' (' + a.user.roleLabel + ')' : '—'} />
+            <InfoRow label="Utilisateur" value={a.user ? a.user.fullName + ' (' + (a.user.role?.name || '—') + ')' : '—'} />
             {a.order && <InfoRow label="Commande" value={a.order.poNumber} link={`/orders/${a.order.id}`} mono />}
           </div>
           {a.description && (

@@ -28,10 +28,10 @@ const POLES = [
 ];
 
 const USERS = [
-  { id: '1', avatar: 'AD', fullName: 'Amadou Diallo', username: 'a.diallo', role: 'admin', roleLabel: 'Admin', email: 'a.diallo@company.com', poleIds: ['P01', 'P02'], loginCount: 127, isActive: true },
-  { id: '2', avatar: 'FM', fullName: 'Fatou Mbaye', username: 'f.mbaye', role: 'acheteur', roleLabel: 'Acheteur', email: 'f.mbaye@company.com', poleIds: ['P01'], loginCount: 89, isActive: true },
-  { id: '3', avatar: 'MS', fullName: 'Moussa Sow', username: 'm.sow', role: 'comptable', roleLabel: 'Comptable', email: 'm.sow@company.com', poleIds: ['P03'], loginCount: 45, isActive: true },
-  { id: '4', avatar: 'AN', fullName: 'Aminata Ndiaye', username: 'a.ndiaye', role: 'magasin', roleLabel: 'Magasinier', email: 'a.ndiaye@company.com', poleIds: ['P02'], loginCount: 62, isActive: true },
+  { id: '1', avatar: 'AD', fullName: 'Amadou Diallo', username: 'a.diallo', role: 'admin', roleName: 'Admin', email: 'a.diallo@company.com', poleIds: ['P01', 'P02'], loginCount: 127, isActive: true },
+  { id: '2', avatar: 'FM', fullName: 'Fatou Mbaye', username: 'f.mbaye', role: 'acheteur', roleName: 'Acheteur', email: 'f.mbaye@company.com', poleIds: ['P01'], loginCount: 89, isActive: true },
+  { id: '3', avatar: 'MS', fullName: 'Moussa Sow', username: 'm.sow', role: 'comptable', roleName: 'Comptable', email: 'm.sow@company.com', poleIds: ['P03'], loginCount: 45, isActive: true },
+  { id: '4', avatar: 'AN', fullName: 'Aminata Ndiaye', username: 'a.ndiaye', role: 'magasin', roleName: 'Magasinier', email: 'a.ndiaye@company.com', poleIds: ['P02'], loginCount: 62, isActive: true },
 ];
 
 const ROLES = [
@@ -163,7 +163,7 @@ export default function SettingsPage() {
                       <td><span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: 'var(--radius-sm)', background: 'var(--accent-blue-soft)', color: 'var(--accent-blue)', fontSize: 'var(--fs-xs)', fontWeight: 'var(--fw-bold)' }}>{u.avatar}</span></td>
                       <td style={{ fontWeight: 'var(--fw-medium)' }}>{u.fullName}</td>
                       <td className="table-mono">{u.username}</td>
-                      <td><span className="badge badge-info">{u.roleLabel}</span></td>
+                      <td><span className="badge badge-info">{u.roleName}</span></td>
                       <td style={{ fontSize: 'var(--fs-xs)' }}>{u.email}</td>
                       <td style={{ fontSize: 'var(--fs-xs)' }}>{u.poleIds.join(', ')}</td>
                       <td className="table-mono">{u.loginCount}</td>

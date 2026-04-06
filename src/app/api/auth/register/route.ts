@@ -60,6 +60,12 @@ export async function POST(request: NextRequest) {
     // Hash password
     const passwordHash = await hash(password, 12);
 
+    // Get default role (consult)
+    const consultRole = await prisma.role.findUnique({ where: { code: 'consult' } });
+    if (!consultRole) {
+      return NextResponse.json({ error: 'Default role not found' }, { status: 500 });
+    }
+
     // Create user
     await prisma.user.create({
       data: {
@@ -67,11 +73,9 @@ export async function POST(request: NextRequest) {
         passwordHash,
         fullName: fullName.trim(),
         email: email.toLowerCase().trim(),
-        role: 'consult',
-        roleLabel: 'Consultant',
+        roleId: consultRole.id,
         avatar,
         poleIds: [],
-        isActive: true,
       },
     });
 

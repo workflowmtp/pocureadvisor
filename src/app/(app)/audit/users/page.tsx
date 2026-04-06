@@ -5,7 +5,7 @@ import { formatCurrency, truncate } from '@/lib/format';
 import { ANOMALY_CATEGORY_ICONS, SEVERITY_CONFIG } from '@/lib/constants';
 
 interface UserProfile {
-  id: string; fullName: string; roleLabel: string; avatar: string; role: string;
+  id: string; fullName: string; roleName: string; avatar: string; role: string;
   discipline: number; totalAnomalies: number; criticals: number; risk: string;
   topCategories: string[]; recommendation: string; trend: string; avgDelay: number;
 }
@@ -99,7 +99,7 @@ export default function AuditUsersPage() {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 'var(--fw-semibold)' }}>{p.fullName}</div>
                   <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-secondary)' }}>
-                    {p.roleLabel} — <span style={{ color: trendColor }}>{trendIcon} {p.trend}</span>
+                    {p.roleName} — <span style={{ color: trendColor }}>{trendIcon} {p.trend}</span>
                   </div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
@@ -186,7 +186,7 @@ export default function AuditUsersPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setAnomalyModal(null)}>
           <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-xl w-full max-w-4xl max-h-[90vh] overflow-auto p-6" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold mb-4">
-              Anomalies — {profiles.find(p => p.id === anomalyModal)?.fullName} ({profiles.find(p => p.id === anomalyModal)?.roleLabel})
+              Anomalies — {profiles.find(p => p.id === anomalyModal)?.fullName} ({profiles.find(p => p.id === anomalyModal)?.roleName})
             </h3>
             <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
               {allAnomalies.filter(a => a.user?.id === anomalyModal).length === 0 ? (

@@ -31,7 +31,7 @@ export default function ProfilePage() {
         <div className="profile-avatar-lg">{user.avatar || initials}</div>
         <div className="profile-info">
           <h2>{user.name}</h2>
-          <div className="role-badge">{user.roleLabel || user.role}</div>
+          <div className="role-badge">{user.roleName || user.role || '—'}</div>
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--sp-1)' }}>{user.email}</div>
         </div>
         <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
@@ -49,7 +49,7 @@ export default function ProfilePage() {
             <InfoItem label="Identifiant" value={user.username || '—'} />
             <InfoItem label="Nom complet" value={user.name || '—'} />
             <InfoItem label="Email" value={user.email || '—'} />
-            <InfoItem label="Rôle" value={user.roleLabel || user.role || '—'} />
+            <InfoItem label="Rôle" value={user.roleName || user.role || '—'} />
             <InfoItem label="Pôles d'accès" value={(user.poleIds || []).join(', ') || 'Tous'} />
             <InfoItem label="Statut" value={user.isActive ? <span className="badge badge-success">Actif</span> : <span className="badge badge-critical">Inactif</span>} />
           </div>

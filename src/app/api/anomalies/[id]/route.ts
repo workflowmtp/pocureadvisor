@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     where: { id },
     include: {
       supplier: true,
-      user: { select: { id: true, fullName: true, roleLabel: true } },
+      user: { select: { id: true, fullName: true, role: { select: { name: true } } } },
       order: { select: { id: true, poNumber: true, totalAmount: true } },
       resolvedBy: { select: { fullName: true } },
     },
