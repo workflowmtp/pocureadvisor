@@ -50,15 +50,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
 
         // Extract permission codes
-        const permissions = user.role.permissions.map(rp => rp.permission.code);
+        const permissions = user.role?.permissions.map(rp => rp.permission.code) || [];
 
         return {
           id: user.id,
           name: user.fullName,
           email: user.email,
           roleId: user.roleId,
-          roleCode: user.role.code,
-          roleName: user.role.name,
+          roleCode: user.role?.code || '',
+          roleName: user.role?.name || '',
           avatar: user.avatar,
           poleIds: user.poleIds,
           permissions,

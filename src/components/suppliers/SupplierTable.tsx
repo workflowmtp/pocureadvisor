@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useMemo } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { formatCurrency, truncate } from '@/lib/format';
 import { ScoreBadge, SupplierStatusBadge, TrendBadge, X3Badge } from '@/components/shared/Badges';
@@ -51,7 +51,7 @@ interface SupplierTableProps {
 }
 
 // Memoized row component to prevent unnecessary re-renders
-const SupplierRow = memo(function SupplierRow({ s, riskBadge }: { s: Supplier; riskBadge: (risk: string) => JSX.Element }) {
+const SupplierRow = memo(function SupplierRow({ s, riskBadge }: { s: Supplier; riskBadge: (risk: string) => React.JSX.Element }) {
   return (
     <tr className="border-b border-[var(--border-secondary)] last:border-0 hover:bg-[var(--bg-card-hover)] transition-colors cursor-pointer" onClick={() => window.location.href = `/suppliers/${s.id}`}>
       <td className="px-4 py-3">
