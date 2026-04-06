@@ -55,8 +55,8 @@ export default function AuditUsersPage() {
         const reco = risk === 'Critique' ? 'Entretien urgent requis. Risque de fraude ou contournement systémique.' : risk === 'Élevé' ? 'Formation aux procédures recommandée. Surveillance renforcée.' : risk === 'Moyen' ? 'Rappel des procédures. Points d\'attention identifiés.' : 'Profil conforme. Maintenir le suivi standard.';
         const trend = score >= 80 ? 'Stable' : risk === 'Critique' ? 'Dégradation' : 'Attention';
 
-        return { id: u.id, fullName: u.fullName, roleLabel: u.roleLabel || '—', avatar: u.fullName.split(' ').map((n: string) => n[0]).join('').substring(0, 2),
-          role: u.role || '', discipline: score, totalAnomalies: total, criticals, risk, topCategories: topCats, recommendation: reco, trend, avgDelay: total > 3 ? Math.round(total * 1.5) : 0 };
+        return { id: u.id, fullName: u.fullName, roleName: u.role?.name || '—', avatar: u.fullName.split(' ').map((n: string) => n[0]).join('').substring(0, 2),
+          role: u.role?.code || '', discipline: score, totalAnomalies: total, criticals, risk, topCategories: topCats, recommendation: reco, trend, avgDelay: total > 3 ? Math.round(total * 1.5) : 0 };
       });
 
       computed.sort((a, b) => a.discipline - b.discipline);
