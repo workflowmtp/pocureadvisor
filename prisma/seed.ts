@@ -1,5 +1,6 @@
-import { PrismaClient, Role, SupplierStatus, RiskLevel, Trend, X3SyncStatus, CriticalLevel, OrderStatus, InvoiceStatus, OcrStatus, ReconciliationStatus, Severity, AnomalyStatus, AlertType, AltSupplierStatus, NegotiationStatus, LetterType, LetterStatus } from '@prisma/client';
+import { PrismaClient, SupplierStatus, RiskLevel, Trend, X3SyncStatus, CriticalLevel, OrderStatus, OcrStatus, ReconciliationStatus, Severity, AnomalyStatus, AlertType, AltSupplierStatus, NegotiationStatus, LetterType, LetterStatus } from '@prisma/client';
 import { hash } from 'bcryptjs';
+import { PERMISSIONS, ROLE_PERMISSIONS } from './permissions';
 
 const prisma = new PrismaClient();
 
@@ -24,22 +25,68 @@ async function main() {
   await prisma.supplier.deleteMany();
   await prisma.auditRule.deleteMany();
   await prisma.pole.deleteMany();
+  await prisma.rolePermission.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.permission.deleteMany();
+  await prisma.role.deleteMany();
   await prisma.purchaseCategory.deleteMany();
   await prisma.setting.deleteMany();
+
+  // ═══════════════════ PERMISSIONS ═══════════════════
+  console.log('Creating permissions...');
+  for (const perm of PERMISSIONS) {
+    await prisma.permission.create({
+      data: {
+        code: perm.code,
+        name: perm.name,
+        category: perm.category,
+        description: perm.description,
+      },
+    });
+  }
+  console.log(`✅ Created ${PERMISSIONS.length} permissions`);
+
+  // ═══════════════════ ROLES ═══════════════════
+  console.log('Creating roles...');
+  const roleMap: Record<string, string> = {};
+  for (const roleData of ROLE_PERMISSIONS) {
+    const role = await prisma.role.create({
+      data: {
+        code: roleData.code,
+        name: roleData.name,
+        description: roleData.description,
+        isSystem: true,
+      },
+    });
+    roleMap[roleData.code] = role.id;
+
+    // Assign permissions to role
+    for (const permCode of roleData.permissions) {
+      const perm = await prisma.permission.findUnique({ where: { code: permCode } });
+      if (perm) {
+        await prisma.rolePermission.create({
+          data: {
+            roleId: role.id,
+            permissionId: perm.id,
+          },
+        });
+      }
+    }
+  }
+  console.log(`✅ Created ${Object.keys(roleMap).length} roles`);
 
   // ═══════════════════ USERS ═══════════════════
   const pw = await hash('demo2025', 12);
 
   const users = await Promise.all([
-    prisma.user.create({ data: { username: 'admin', passwordHash: pw, fullName: 'Administrateur Système', email: 'admin@multiprint.cm', role: Role.admin, roleLabel: 'Administrateur', avatar: 'AS', poleIds: ['OE','HF','OC','BC'], loginCount: 234 } }),
-    prisma.user.create({ data: { username: 'd.moukoko', passwordHash: pw, fullName: 'Daniel Moukoko', email: 'd.moukoko@multiprint.cm', role: Role.dir_achat, roleLabel: 'Directeur Achats', avatar: 'DM', poleIds: ['OE','HF','OC','BC'], loginCount: 189 } }),
-    prisma.user.create({ data: { username: 'a.ngo', passwordHash: pw, fullName: 'Alice Ngo Bassa', email: 'a.ngo@multiprint.cm', role: Role.acheteur, roleLabel: 'Acheteur', avatar: 'AN', poleIds: ['HF','OE'], loginCount: 156 } }),
-    prisma.user.create({ data: { username: 'c.fotso', passwordHash: pw, fullName: 'Christian Fotso', email: 'c.fotso@multiprint.cm', role: Role.comptable, roleLabel: 'Comptable Achats', avatar: 'CF', poleIds: ['OE','HF','OC','BC'], loginCount: 142 } }),
-    prisma.user.create({ data: { username: 'm.eyanga', passwordHash: pw, fullName: 'Marcel Eyanga', email: 'm.eyanga@multiprint.cm', role: Role.magasin, roleLabel: 'Magasinier', avatar: 'ME', poleIds: ['HF','OC'], loginCount: 98 } }),
-    prisma.user.create({ data: { username: 'i.nguema', passwordHash: pw, fullName: 'Irène Nguema', email: 'i.nguema@multiprint.cm', role: Role.audit, roleLabel: 'Contrôle Interne', avatar: 'IN', poleIds: ['OE','HF','OC','BC'], loginCount: 78 } }),
-    prisma.user.create({ data: { username: 'direction', passwordHash: pw, fullName: 'Direction Générale', email: 'dg@multiprint.cm', role: Role.dg, roleLabel: 'Direction Générale', avatar: 'DG', poleIds: ['OE','HF','OC','BC'], loginCount: 45 } }),
-    prisma.user.create({ data: { username: 'consultant', passwordHash: pw, fullName: 'Consultant Externe', email: 'consultant@ext.cm', role: Role.consult, roleLabel: 'Consultant', avatar: 'CE', poleIds: ['OE','HF','OC','BC'], loginCount: 12 } }),
+    prisma.user.create({ data: { username: 'admin', passwordHash: pw, fullName: 'Administrateur Système', email: 'admin@multiprint.cm', roleId: roleMap['admin'], avatar: 'AS', poleIds: ['OE','HF','OC','BC'], loginCount: 234 } }),
+    prisma.user.create({ data: { username: 'd.moukoko', passwordHash: pw, fullName: 'Daniel Moukoko', email: 'd.moukoko@multiprint.cm', roleId: roleMap['dir_achat'], avatar: 'DM', poleIds: ['OE','HF','OC','BC'], loginCount: 189 } }),
+    prisma.user.create({ data: { username: 'a.ngo', passwordHash: pw, fullName: 'Alice Ngo Bassa', email: 'a.ngo@multiprint.cm', roleId: roleMap['acheteur'], avatar: 'AN', poleIds: ['HF','OE'], loginCount: 156 } }),
+    prisma.user.create({ data: { username: 'c.fotso', passwordHash: pw, fullName: 'Christian Fotso', email: 'c.fotso@multiprint.cm', roleId: roleMap['comptable'], avatar: 'CF', poleIds: ['OE','HF','OC','BC'], loginCount: 142 } }),
+    prisma.user.create({ data: { username: 'm.eyanga', passwordHash: pw, fullName: 'Marcel Eyanga', email: 'm.eyanga@multiprint.cm', roleId: roleMap['magasinier'], avatar: 'ME', poleIds: ['HF','OC'], loginCount: 98 } }),
+    prisma.user.create({ data: { username: 'i.nguema', passwordHash: pw, fullName: 'Irène Nguema', email: 'i.nguema@multiprint.cm', roleId: roleMap['auditeur'], avatar: 'IN', poleIds: ['OE','HF','OC','BC'], loginCount: 78 } }),
+    prisma.user.create({ data: { username: 'direction', passwordHash: pw, fullName: 'Direction Générale', email: 'dg@multiprint.cm', roleId: roleMap['dg'], avatar: 'DG', poleIds: ['OE','HF','OC','BC'], loginCount: 45 } }),
+    prisma.user.create({ data: { username: 'consultant', passwordHash: pw, fullName: 'Consultant Externe', email: 'consultant@ext.cm', roleId: roleMap['consult'], avatar: 'CE', poleIds: ['OE','HF','OC','BC'], loginCount: 12 } }),
   ]);
 
   const [admin, dirAchat, acheteur, comptable, magasinier, auditeur, dg, consultant] = users;
