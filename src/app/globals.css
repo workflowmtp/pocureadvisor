@@ -316,8 +316,8 @@
     --status-info: #6366F1;
     --status-success: #10B981;
     /* ─── Typographie ─── */
-    --font-sans: 'DM Sans', -apple-system, sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    --font-sans: var(--font-dm-sans), -apple-system, sans-serif;
+    --font-mono: var(--font-jetbrains), monospace;
     --fs-xs: 0.7rem;
     --fs-sm: 0.8rem;
     --fs-base: 0.875rem;
