@@ -47,7 +47,8 @@ function LoginForm() {
     if (result?.error) {
       setError('Adresse e-mail ou mot de passe incorrect');
     } else {
-      router.push('/dashboard');
+      // Force a full page navigation to ensure session is loaded
+      window.location.href = '/dashboard';
     }
   }
 
