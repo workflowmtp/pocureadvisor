@@ -1,6 +1,6 @@
 import { PrismaClient, SupplierStatus, RiskLevel, Trend, X3SyncStatus, CriticalLevel, OrderStatus, OcrStatus, ReconciliationStatus, Severity, AnomalyStatus, AlertType, AltSupplierStatus, NegotiationStatus, LetterType, LetterStatus } from '@prisma/client';
 import { hash } from 'bcryptjs';
-import { PERMISSIONS, ROLE_PERMISSIONS } from './permissions';
+import { PERMISSIONS, DEFAULT_ROLES } from './permissions';
 
 const prisma = new PrismaClient();
 
@@ -40,7 +40,6 @@ async function main() {
         code: perm.code,
         name: perm.name,
         category: perm.category,
-        description: perm.description,
       },
     });
   }
@@ -49,7 +48,7 @@ async function main() {
   // ═══════════════════ ROLES ═══════════════════
   console.log('Creating roles...');
   const roleMap: Record<string, string> = {};
-  for (const roleData of ROLE_PERMISSIONS) {
+  for (const roleData of DEFAULT_ROLES) {
     const role = await prisma.role.create({
       data: {
         code: roleData.code,
@@ -61,15 +60,29 @@ async function main() {
     roleMap[roleData.code] = role.id;
 
     // Assign permissions to role
-    for (const permCode of roleData.permissions) {
-      const perm = await prisma.permission.findUnique({ where: { code: permCode } });
-      if (perm) {
+    if (roleData.permissions === '*') {
+      // Admin gets all permissions
+      const allPerms = await prisma.permission.findMany();
+      for (const perm of allPerms) {
         await prisma.rolePermission.create({
           data: {
             roleId: role.id,
             permissionId: perm.id,
           },
         });
+      }
+    } else {
+      // Specific permissions
+      for (const permCode of roleData.permissions) {
+        const perm = await prisma.permission.findUnique({ where: { code: permCode } });
+        if (perm) {
+          await prisma.rolePermission.create({
+            data: {
+              roleId: role.id,
+              permissionId: perm.id,
+            },
+          });
+        }
       }
     }
   }
@@ -83,8 +96,8 @@ async function main() {
     prisma.user.create({ data: { username: 'd.moukoko', passwordHash: pw, fullName: 'Daniel Moukoko', email: 'd.moukoko@multiprint.cm', roleId: roleMap['dir_achat'], avatar: 'DM', poleIds: ['OE','HF','OC','BC'], loginCount: 189 } }),
     prisma.user.create({ data: { username: 'a.ngo', passwordHash: pw, fullName: 'Alice Ngo Bassa', email: 'a.ngo@multiprint.cm', roleId: roleMap['acheteur'], avatar: 'AN', poleIds: ['HF','OE'], loginCount: 156 } }),
     prisma.user.create({ data: { username: 'c.fotso', passwordHash: pw, fullName: 'Christian Fotso', email: 'c.fotso@multiprint.cm', roleId: roleMap['comptable'], avatar: 'CF', poleIds: ['OE','HF','OC','BC'], loginCount: 142 } }),
-    prisma.user.create({ data: { username: 'm.eyanga', passwordHash: pw, fullName: 'Marcel Eyanga', email: 'm.eyanga@multiprint.cm', roleId: roleMap['magasinier'], avatar: 'ME', poleIds: ['HF','OC'], loginCount: 98 } }),
-    prisma.user.create({ data: { username: 'i.nguema', passwordHash: pw, fullName: 'Irène Nguema', email: 'i.nguema@multiprint.cm', roleId: roleMap['auditeur'], avatar: 'IN', poleIds: ['OE','HF','OC','BC'], loginCount: 78 } }),
+    prisma.user.create({ data: { username: 'm.eyanga', passwordHash: pw, fullName: 'Marcel Eyanga', email: 'm.eyanga@multiprint.cm', roleId: roleMap['magasin'], avatar: 'ME', poleIds: ['HF','OC'], loginCount: 98 } }),
+    prisma.user.create({ data: { username: 'i.nguema', passwordHash: pw, fullName: 'Irène Nguema', email: 'i.nguema@multiprint.cm', roleId: roleMap['audit'], avatar: 'IN', poleIds: ['OE','HF','OC','BC'], loginCount: 78 } }),
     prisma.user.create({ data: { username: 'direction', passwordHash: pw, fullName: 'Direction Générale', email: 'dg@multiprint.cm', roleId: roleMap['dg'], avatar: 'DG', poleIds: ['OE','HF','OC','BC'], loginCount: 45 } }),
     prisma.user.create({ data: { username: 'consultant', passwordHash: pw, fullName: 'Consultant Externe', email: 'consultant@ext.cm', roleId: roleMap['consult'], avatar: 'CE', poleIds: ['OE','HF','OC','BC'], loginCount: 12 } }),
   ]);
