@@ -103,7 +103,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     case 'escalate': {
       const escaladeComment = body.comment || '';
       // Find dir_achat user
-      const dirAchat = await prisma.user.findFirst({ where: { role: 'dir_achat' } });
+      const dirAchat = await prisma.user.findFirst({ where: { role: { code: 'dir_achat' } } });
       const comments = [...existingComments, { user: userName, date: new Date().toISOString(), text: 'ESCALADÉ au Dir. Achats' + (escaladeComment ? ' — ' + escaladeComment : '') }];
       await prisma.document.update({
         where: { id },
