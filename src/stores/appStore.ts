@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 interface AppState {
   theme: 'dark' | 'light';
@@ -30,6 +30,11 @@ export const useAppStore = create<AppState>()(
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       updateBadges: (badges) => set((s) => ({ badges: { ...s.badges, ...badges } })),
     }),
-    { name: 'pa-store', partialize: (s) => ({ theme: s.theme, sidebarCollapsed: s.sidebarCollapsed }) }
+    {
+      name: 'pa-store',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (s) => ({ theme: s.theme, sidebarCollapsed: s.sidebarCollapsed }),
+      skipHydration: true,
+    }
   )
 );
