@@ -18,6 +18,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (!doc || doc.isDeleted) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
+  // Extraire ocrData depuis comments
+  const commentsData = doc.comments as any;
+  let ocrData = null;
+  let extractedFields = null;
+  let userComments: any[] = [];
+
+  if (commentsData && typeof commentsData === 'object' && !Array.isArray(commentsData)) {
+    if (commentsData.ocrData) {
+      ocrData = commentsData.ocrData;
+      extractedFields = commentsData.extractedFields || commentsData.ocrData?.extractedFields || null;
+    }
+  } else if (Array.isArray(commentsData)) {
+    userComments = commentsData;
+  }
+
   // Determine verdict
   const variances = (doc.variances as any[]) || [];
   let verdict = { label: 'En cours', class: 'pending', desc: 'Document en cours de traitement.' };
@@ -44,11 +59,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       supplierName: doc.supplier?.name || '—',
       uploadedByName: doc.uploadedBy?.fullName || '—',
       assignedToName: doc.assignedTo?.fullName || '—',
+      ocrData,
+      extractedFields,
     },
     variances,
     verdict,
     stages,
-    comments: (doc.comments as any[]) || [],
+    comments: userComments,
   });
 }
 
@@ -65,7 +82,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const doc = await prisma.document.findUnique({ where: { id } });
   if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const existingComments = (doc.comments as any[]) || [];
+  // comments peut être un objet {ocrData: ...} ou un tableau de commentaires
+  const rawComments = doc.comments as any;
+  let ocrPayload: any = null;
+  let existingComments: any[] = [];
+  
+  if (rawComments && typeof rawComments === 'object' && !Array.isArray(rawComments)) {
+    if (rawComments.ocrData) {
+      ocrPayload = { ocrData: rawComments.ocrData };
+      existingComments = rawComments.userComments || [];
+    } else {
+      existingComments = [];
+    }
+  } else if (Array.isArray(rawComments)) {
+    existingComments = rawComments;
+  }
+  
+  // Helper pour sauvegarder comments en préservant ocrData
+  const buildComments = (newComments: any[]) => {
+    if (ocrPayload) {
+      return { ...ocrPayload, userComments: newComments };
+    }
+    return newComments;
+  };
 
   switch (action) {
     case 'validate': {
@@ -79,7 +118,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     case 'validate_with_justification': {
       const justification = body.justification || '';
-      const comments = [...existingComments, { user: userName, date: new Date().toISOString(), text: 'Justification écart: ' + justification }];
+      const comments = buildComments([...existingComments, { user: userName, date: new Date().toISOString(), text: 'Justification écart: ' + justification }]);
       await prisma.document.update({
         where: { id },
         data: { reconciliationStatus: 'validated', pipelineStage: 7, comments },
@@ -91,7 +130,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     case 'block': {
       const reason = body.reason || '';
       const comment = body.comment || '';
-      const comments = [...existingComments, { user: userName, date: new Date().toISOString(), text: 'BLOQUÉ — ' + reason + (comment ? ' — ' + comment : '') }];
+      const comments = buildComments([...existingComments, { user: userName, date: new Date().toISOString(), text: 'BLOQUÉ — ' + reason + (comment ? ' — ' + comment : '') }]);
       await prisma.document.update({
         where: { id },
         data: { reconciliationStatus: 'critical', comments },
@@ -102,9 +141,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     case 'escalate': {
       const escaladeComment = body.comment || '';
-      // Find dir_achat user
       const dirAchat = await prisma.user.findFirst({ where: { role: { code: 'dir_achat' } } });
-      const comments = [...existingComments, { user: userName, date: new Date().toISOString(), text: 'ESCALADÉ au Dir. Achats' + (escaladeComment ? ' — ' + escaladeComment : '') }];
+      const comments = buildComments([...existingComments, { user: userName, date: new Date().toISOString(), text: 'ESCALADÉ au Dir. Achats' + (escaladeComment ? ' — ' + escaladeComment : '') }]);
       await prisma.document.update({
         where: { id },
         data: { assignedToId: dirAchat?.id || null, comments },
@@ -115,7 +153,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     case 'comment': {
       const text = body.text || '';
-      const comments = [...existingComments, { user: userName, date: new Date().toISOString(), text }];
+      const comments = buildComments([...existingComments, { user: userName, date: new Date().toISOString(), text }]);
       await prisma.document.update({ where: { id }, data: { comments } });
       await logActivity(session.user.id!, userName, 'update', 'documents', id, 'Commentaire: ' + text.substring(0, 50));
       break;

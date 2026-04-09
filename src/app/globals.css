@@ -137,10 +137,6 @@
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         gap: var(--sp-4);
     }
-    .ocr-split-view {
-        grid-template-columns: 1fr 1fr;
-        gap: var(--sp-6);
-    }
 }
 
 
@@ -1175,16 +1171,13 @@ body {
 .ocr-pipeline-title {
     font-size: var(--fs-md);
     font-weight: var(--fw-semibold);
-    color: var(--text-primary);
     margin-bottom: var(--sp-4);
-    text-align: center;
 }
 
 .ocr-pipeline {
     display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    gap: var(--sp-2);
+    align-items: center;
+    gap: 0;
     overflow-x: auto;
     padding-bottom: var(--sp-2);
 }
@@ -1205,8 +1198,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 20px;
-    border: 1px solid var(--border-primary);
+    font-size: 18px;
+    border: 2px solid var(--border-primary);
     background: var(--bg-primary);
     transition: all var(--transition-base);
 }
@@ -1253,7 +1246,7 @@ body {
     height: 2px;
     background: var(--border-primary);
     flex-shrink: 0;
-    margin-top: 22px;
+    margin-top: -20px;
 }
 
 .ocr-stage-arrow.done {
@@ -1322,22 +1315,26 @@ body {
 .ocr-split-view {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: var(--sp-6);
+    gap: var(--sp-5);
     margin-bottom: var(--sp-5);
 }
 
+@media (max-width: 1024px) {
+    .ocr-split-view {
+        grid-template-columns: 1fr;
+    }
+}
+
 .ocr-doc-image {
-    background: var(--bg-card);
+    background: var(--bg-input);
     border: 1px solid var(--border-primary);
     border-radius: var(--radius-lg);
-    padding: var(--sp-8);
-    text-align: center;
-    font-size: 64px;
-    opacity: 0.6;
+    min-height: 300px;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 400px;
+    font-size: 64px;
+    color: var(--text-tertiary);
 }
 
 .ocr-extracted-data {
@@ -1348,35 +1345,36 @@ body {
 }
 
 .ocr-field {
-    margin-bottom: var(--sp-4);
-    padding-bottom: var(--sp-4);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    padding: var(--sp-3) 0;
     border-bottom: 1px solid var(--border-secondary);
 }
 
 .ocr-field:last-child {
     border-bottom: none;
-    margin-bottom: 0;
-    padding-bottom: 0;
 }
 
 .ocr-field-label {
+    min-width: 130px;
     font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
     color: var(--text-tertiary);
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: var(--sp-1);
+    letter-spacing: 0.5px;
+    padding-top: 2px;
 }
 
 .ocr-field-value {
+    flex: 1;
     font-size: var(--fs-sm);
+    font-weight: var(--fw-medium);
     color: var(--text-primary);
-    margin-bottom: var(--sp-1);
 }
 
 .ocr-field-confidence {
     font-size: var(--fs-xs);
-    padding: 2px var(--sp-2);
+    padding: 1px 8px;
     border-radius: var(--radius-full);
     font-weight: var(--fw-medium);
 }
@@ -1400,37 +1398,38 @@ body {
 /* ─── Rapprochement Results ─── */
 
 .reconciliation-result {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--sp-3);
     padding: var(--sp-4);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
+    border: 1px solid;
     margin-bottom: var(--sp-3);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
 }
 
 .reconciliation-result.match {
     background: var(--accent-green-soft);
-    border: 1px solid var(--accent-green);
+    border-color: rgba(16, 185, 129, 0.3);
 }
 
 .reconciliation-result.minor {
     background: var(--accent-orange-soft);
-    border: 1px solid var(--accent-orange);
+    border-color: rgba(245, 158, 11, 0.3);
 }
 
 .reconciliation-result.major {
     background: var(--accent-red-soft);
-    border: 1px solid var(--accent-red);
+    border-color: rgba(239, 68, 68, 0.3);
 }
 
 .reconciliation-result.blocking {
-    background: var(--accent-red-soft);
-    border: 1px solid var(--accent-red);
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.5);
 }
 
 .recon-icon {
-    font-size: 20px;
-    flex-shrink: 0;
+    font-size: 22px;
+    min-width: 30px;
 }
 
 .recon-content {

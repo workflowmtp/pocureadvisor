@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   if (status) where.reconciliationStatus = status as any;
   if (supplier) where.supplierId = supplier;
 
-  const documents = await prisma.document.findMany({
+  const rawDocuments = await prisma.document.findMany({
     where,
     include: {
       supplier: { select: { id: true, name: true, code: true } },
@@ -34,6 +34,26 @@ export async function GET(req: NextRequest) {
     },
     orderBy: { uploadDate: 'desc' },
     take: 100,
+  });
+
+  // Exposer ocrData et extractedFields depuis le champ comments (stocké par l'upload OCR)
+  const documents = rawDocuments.map(doc => {
+    const commentsData = doc.comments as any;
+    let ocrData = null;
+    let extractedFields = null;
+
+    if (commentsData && typeof commentsData === 'object' && !Array.isArray(commentsData)) {
+      if (commentsData.ocrData) {
+        ocrData = commentsData.ocrData;
+        extractedFields = commentsData.extractedFields || commentsData.ocrData?.extractedFields || null;
+      }
+    }
+
+    return {
+      ...doc,
+      ocrData,
+      extractedFields,
+    };
   });
 
   const stats = {

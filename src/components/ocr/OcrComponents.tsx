@@ -1,5 +1,6 @@
 'use client';
 
+import React, { useState, useRef, Fragment } from 'react';
 import { formatDate, formatCurrency } from '@/lib/format';
 
 // ─── Pipeline OCR avec 7 étapes comme l'original ───
@@ -31,17 +32,16 @@ export function OcrPipeline({ currentStage, stageCounts = {} }: OcrPipelineProps
       <div className="ocr-pipeline">
         {PIPELINE_STAGES.map((stage, i) => {
           const count = stageCounts[stage.id] || 0;
-          const stageClass = stage.id < currentStage ? 'done' : 
-                           stage.id === currentStage ? 'active' : 'pending';
+          const stageClass = count > 0 ? 'active' : 'pending';
           
           return (
-            <div key={stage.id}>
+            <Fragment key={stage.id}>
               {i > 0 && (
-                <div className={`ocr-stage-arrow ${stage.id <= currentStage ? 'done' : ''}`} />
+                <div className="ocr-stage-arrow" />
               )}
-              <div className={`ocr-stage ${stageClass} ${count > 0 ? 'active' : ''}`}>
+              <div className={`ocr-stage ${stageClass}`}>
                 <div className="ocr-stage-icon">
-                  {stageClass === 'done' ? '✓' : stage.icon}
+                  {stage.icon}
                 </div>
                 <div className="ocr-stage-label">
                   {stage.label}
@@ -51,7 +51,7 @@ export function OcrPipeline({ currentStage, stageCounts = {} }: OcrPipelineProps
                   </span>
                 </div>
               </div>
-            </div>
+            </Fragment>
           );
         })}
       </div>
@@ -59,13 +59,151 @@ export function OcrPipeline({ currentStage, stageCounts = {} }: OcrPipelineProps
   );
 }
 
-// ─── Upload Zone améliorée ───
-export function UploadZone({ onUpload }: { onUpload?: () => void }) {
+// ─── Upload Zone améliorée avec upload réel
+interface UploadZoneProps {
+  onUpload?: () => void;
+  onUploadComplete?: (result: any) => void;
+  fileType?: string;
+}
+
+export function UploadZone({ onUpload, onUploadComplete, fileType = 'invoice' }: UploadZoneProps) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const processFile = async (file: File) => {
+    console.log('[UploadZone] Processing file:', file.name, file.type, file.size);
+
+    const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type) && !file.name.match(/\.(pdf|jpg|jpeg|png|gif|webp)$/i)) {
+      setError('Format non supporté. Utilisez PDF, JPG, PNG, GIF ou WebP.');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Fichier trop volumineux. Maximum 10 MB.');
+      return;
+    }
+
+    setError(null);
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('fileType', fileType);
+
+      console.log('[UploadZone] Sending to /api/documents/upload...');
+
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => Math.min(prev + 5, 90));
+      }, 500);
+
+      const response = await fetch('/api/documents/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      clearInterval(progressInterval);
+
+      console.log('[UploadZone] Response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error(errorData.error || errorData.details || 'Erreur lors de l\'upload');
+      }
+
+      setUploadProgress(100);
+      const result = await response.json();
+      console.log('[UploadZone] Upload success:', result.ocrResult ? 'OCR OK' : 'OCR null', 'error:', result.ocrError);
+
+      if (onUpload) onUpload();
+      if (onUploadComplete) onUploadComplete(result);
+
+      setTimeout(() => {
+        setIsUploading(false);
+        setUploadProgress(0);
+      }, 1500);
+
+    } catch (err: any) {
+      console.error('[UploadZone] Upload error:', err);
+      setError(err.message || 'Erreur lors de l\'upload');
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
   return (
-    <div className="upload-zone" onClick={onUpload}>
-      <div className="upload-zone-icon">📤</div>
-      <div className="upload-zone-text">Glisser-déposer un document ou cliquer pour sélectionner</div>
-      <div className="upload-zone-hint">Formats acceptés: PDF, JPG, PNG — Max 10 MB</div>
+    <div
+      className={`upload-zone ${isDragging ? 'dragover' : ''}`}
+      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+      onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        if (e.dataTransfer.files.length > 0) processFile(e.dataTransfer.files[0]);
+      }}
+      onClick={() => { if (!isUploading) fileInputRef.current?.click(); }}
+      style={isUploading ? { cursor: 'wait' } : undefined}
+    >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+        onChange={(e) => { if (e.target.files?.[0]) processFile(e.target.files[0]); }}
+        style={{ display: 'none' }}
+      />
+
+      {isUploading ? (
+        <>
+          <div className="upload-zone-icon" style={{ fontSize: '32px' }}>
+            {uploadProgress < 100 ? 'Analyse en cours...' : 'Terminé!'}
+          </div>
+          <div className="upload-zone-text">
+            <div style={{
+              width: '200px',
+              height: '8px',
+              background: 'var(--bg-tertiary)',
+              borderRadius: '4px',
+              overflow: 'hidden',
+              margin: '0 auto',
+            }}>
+              <div style={{
+                width: `${uploadProgress}%`,
+                height: '100%',
+                background: 'var(--accent-blue)',
+                transition: 'width 0.2s ease',
+              }} />
+            </div>
+            <div style={{ marginTop: '8px', fontSize: 'var(--fs-sm)' }}>
+              {uploadProgress < 50 ? 'Upload du fichier...' :
+               uploadProgress < 90 ? 'Analyse OCR avec Claude...' :
+               'Sauvegarde...'}
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="upload-zone-icon">📤</div>
+          <div className="upload-zone-text">Glisser-déposer un document ou cliquer pour sélectionner</div>
+          <div className="upload-zone-hint">Formats acceptés: PDF, JPG, PNG - Max 10 MB</div>
+          {error && (
+            <div style={{
+              marginTop: '8px',
+              padding: '8px 12px',
+              background: 'var(--accent-red-soft)',
+              color: 'var(--accent-red)',
+              borderRadius: '6px',
+              fontSize: 'var(--fs-sm)',
+            }}>
+              {error}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -216,7 +354,20 @@ export function SplitAnalysis({ doc }: SplitAnalysisProps) {
   const icon = DOC_TYPE_ICONS[doc.fileType] || '📄';
   const typeLabel = DOC_TYPE_LABELS[doc.fileType] || doc.fileType;
 
-  const ocrBadge = doc.ocrStatus === 'extracted' ? 
+  // Résoudre ocrData : directement sur doc, ou dans comments.ocrData
+  const ocr: Record<string, any> | null = 
+    doc.ocrData || 
+    (doc as any).comments?.ocrData || 
+    null;
+
+  const fields: Record<string, string> | null = 
+    doc.extractedFields || 
+    ocr?.extractedFields || 
+    null;
+
+  const isExtracted = doc.ocrStatus === 'extracted' || (ocr && Object.keys(ocr).length > 0);
+
+  const ocrBadge = isExtracted ? 
     '<span class="badge badge-success">OCR terminé</span>' :
     doc.ocrStatus === 'processing' ? 
     '<span class="badge badge-info">En cours...</span>' :
@@ -231,43 +382,74 @@ export function SplitAnalysis({ doc }: SplitAnalysisProps) {
           <span dangerouslySetInnerHTML={{ __html: ocrBadge }} />
         </div>
         
-        {doc.ocrData && Object.keys(doc.ocrData).length > 0 ? (
+        {ocr ? (
           <>
-            <OcrField label="Type de document" value={typeLabel} confidence="high" />
-            {doc.ocrData.supplier && (
+            <OcrField label="Type de document" value={ocr.documentType || typeLabel} confidence="high" />
+            {(ocr.supplier || ocr.supplierMatched) && (
               <OcrField 
                 label="Fournisseur" 
-                value={doc.ocrData.supplier} 
-                confidence={(doc.extractedFields?.supplier_confidence as 'high' | 'medium' | 'low') || 'high'} 
+                value={ocr.supplierMatched || ocr.supplier} 
+                confidence={(fields?.supplier_confidence as 'high' | 'medium' | 'low') || 'high'} 
               />
             )}
-            {doc.ocrData.date && (
+            {ocr.date && (
               <OcrField 
                 label="Date" 
-                value={formatDate(doc.ocrData.date)} 
-                confidence={(doc.extractedFields?.date_confidence as 'high' | 'medium' | 'low') || 'high'} 
+                value={formatDate(ocr.date)} 
+                confidence={(fields?.date_confidence as 'high' | 'medium' | 'low') || 'high'} 
               />
             )}
-            {doc.ocrData.number && (
+            {(ocr.number || ocr.invoiceNumber) && (
               <OcrField 
                 label="Numéro" 
-                value={<span className="table-mono">{doc.ocrData.number}</span>} 
+                value={<span className="table-mono">{ocr.number || ocr.invoiceNumber}</span>} 
                 confidence="high" 
               />
             )}
-            {doc.ocrData.amount_ht && (
+            {ocr.poNumber && (
               <OcrField 
-                label="Montant HT" 
-                value={formatCurrency(doc.ocrData.amount_ht)} 
-                confidence={(doc.extractedFields?.amount_confidence as 'high' | 'medium' | 'low') || 'high'} 
+                label="N° commande" 
+                value={<span className="table-mono">{ocr.poNumber}</span>} 
+                confidence="high" 
               />
             )}
-            {doc.ocrData.amount_ttc && (
+            {(ocr.amount_ht != null || ocr.amountHt != null) && (
+              <OcrField 
+                label="Montant HT" 
+                value={formatCurrency(ocr.amount_ht ?? ocr.amountHt)} 
+                confidence={(fields?.amount_confidence as 'high' | 'medium' | 'low') || 'high'} 
+              />
+            )}
+            {(ocr.amount_tva != null || ocr.amountTva != null) && (
+              <OcrField 
+                label="TVA" 
+                value={formatCurrency(ocr.amount_tva ?? ocr.amountTva)} 
+                confidence="high" 
+              />
+            )}
+            {(ocr.amount_ttc != null || ocr.amountTtc != null) && (
               <OcrField 
                 label="Montant TTC" 
-                value={<strong>{formatCurrency(doc.ocrData.amount_ttc)}</strong>} 
-                confidence={(doc.extractedFields?.amount_confidence as 'high' | 'medium' | 'low') || 'high'} 
+                value={<strong>{formatCurrency(ocr.amount_ttc ?? ocr.amountTtc)}</strong>} 
+                confidence={(fields?.amount_confidence as 'high' | 'medium' | 'low') || 'high'} 
               />
+            )}
+            {ocr.currency && (
+              <OcrField label="Devise" value={ocr.currency} confidence="high" />
+            )}
+            {ocr.paymentTerms && (
+              <OcrField label="Conditions de paiement" value={ocr.paymentTerms} confidence="medium" />
+            )}
+            {ocr.rawAnalysis && (
+              <div style={{ marginTop: 'var(--sp-3)', padding: '10px 12px', background: 'var(--bg-tertiary)', borderRadius: '8px', fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                <strong style={{ display: 'block', marginBottom: '4px', color: 'var(--text-primary)', fontSize: 'var(--fs-xs)' }}>Analyse Claude :</strong>
+                {ocr.rawAnalysis}
+              </div>
+            )}
+            {ocr.confidence != null && (
+              <div style={{ marginTop: 'var(--sp-3)', fontSize: 'var(--fs-xs)', color: 'var(--text-tertiary)' }}>
+                Confiance globale : <strong>{Math.round(ocr.confidence * 100)}%</strong>
+              </div>
             )}
           </>
         ) : (
