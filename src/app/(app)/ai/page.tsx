@@ -330,9 +330,14 @@ function AnalysisCard({ content, onViewDetails }: { content: string; onViewDetai
       {/* View details button */}
       <button
         onClick={onViewDetails}
-        className="flex items-center gap-2 px-3 py-1.5 bg-brand-purple-soft text-brand-purple text-xs font-medium rounded-lg hover:bg-brand-purple hover:text-white transition-colors"
+        className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-colors"
+        style={{ 
+          backgroundColor: 'rgba(139, 92, 246, 0.15)', 
+          color: '#8B5CF6',
+          border: '1px solid rgba(139, 92, 246, 0.3)'
+        }}
       >
-        <span>Voir l'analyse détaillée</span>
+        Voir l'analyse détaillée
       </button>
     </div>
   );
