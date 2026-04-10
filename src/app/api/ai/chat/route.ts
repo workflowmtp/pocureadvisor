@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { auth } from '@/lib/auth';
 
+// Configure max duration for serverless (Vercel)
+export const maxDuration = 60;
+
 const OCR_DOCUMENT_CHAT_WEBHOOK_URL = 'https://n8n.mtb-app.com/webhook/d22c20c5-8813-4615-a35b-07a48fc97e12';
 
 export async function POST(req: NextRequest) {
@@ -55,7 +58,7 @@ export async function POST(req: NextRequest) {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(60000),
+        signal: AbortSignal.timeout(60000), // 60s timeout
       });
 
       console.log('[OCR DOC CHAT] n8n response received, status:', documentWebhookResponse.status);
@@ -105,7 +108,7 @@ export async function POST(req: NextRequest) {
       
       if (error?.name === 'TimeoutError' || error?.message?.includes('timeout')) {
         return NextResponse.json(
-          { error: 'Timeout: le webhook n8n a pris trop de temps à répondre', details: 'Délai de 60 secondes dépassé' },
+          { error: 'Timeout: le webhook n8n met trop de temps à répondre (plus de 60 secondes)', details: 'Vérifiez que le workflow n8n est actif et optimisé' },
           { status: 504 }
         );
       }
@@ -161,10 +164,26 @@ async function buildContext(documentId?: string) {
   if (documentId) {
     const document = await prisma.document.findUnique({
       where: { id: documentId },
-      include: {
+      select: {
+        id: true,
+        fileName: true,
+        fileType: true,
+        mimeType: true,
+        invoiceNumber: true,
+        poNumber: true,
+        amountHt: true,
+        amountTva: true,
+        amountTtc: true,
+        ocrStatus: true,
+        ocrConfidence: true,
+        pipelineStage: true,
+        reconciliationStatus: true,
+        variances: true,
+        isDeleted: true,
         supplier: { select: { name: true, code: true } },
         uploadedBy: { select: { fullName: true } },
         assignedTo: { select: { fullName: true } },
+        // Exclude fileBase64 to prevent memory/timeout issues
       },
     });
 
