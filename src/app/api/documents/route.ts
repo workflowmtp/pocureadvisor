@@ -3,6 +3,21 @@ import prisma from '@/lib/prisma';
 import { auth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
 
+function buildOcrData(doc: any) {
+  if (doc.ocrStatus !== 'extracted') return null;
+
+  return {
+    documentType: doc.fileType,
+    supplierMatched: doc.supplier?.name || null,
+    invoiceNumber: doc.invoiceNumber,
+    poNumber: doc.poNumber,
+    amountHt: doc.amountHt,
+    amountTva: doc.amountTva,
+    amountTtc: doc.amountTtc,
+    confidence: doc.ocrConfidence,
+  };
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -36,23 +51,13 @@ export async function GET(req: NextRequest) {
     take: 100,
   });
 
-  // Exposer ocrData et extractedFields depuis le champ comments (stocké par l'upload OCR)
   const documents = rawDocuments.map(doc => {
-    const commentsData = doc.comments as any;
-    let ocrData = null;
-    let extractedFields = null;
-
-    if (commentsData && typeof commentsData === 'object' && !Array.isArray(commentsData)) {
-      if (commentsData.ocrData) {
-        ocrData = commentsData.ocrData;
-        extractedFields = commentsData.extractedFields || commentsData.ocrData?.extractedFields || null;
-      }
-    }
+    const ocrData = buildOcrData(doc);
 
     return {
       ...doc,
       ocrData,
-      extractedFields,
+      extractedFields: null,
     };
   });
 

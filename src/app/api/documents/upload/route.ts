@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
         fileSize: formatFileSize(file.size),
         fileType: fileType,
         mimeType: mimeType,
+        fileBase64: base64Data,
         uploadedById: session.user.id!,
         ocrStatus: ocrResult ? 'extracted' : 'pending',
         ocrConfidence: ocrResult?.confidence ? parseFloat(String(ocrResult.confidence)) : null,
@@ -60,7 +61,6 @@ export async function POST(req: NextRequest) {
         amountTtc: ocrResult?.amountTtc ? parseFloat(String(ocrResult.amountTtc)) : null,
         pipelineStage: ocrResult ? 3 : 2,
         reconciliationStatus: 'pending',
-        comments: ocrResult ? { ocrData: ocrResult } : undefined,
       },
       include: {
         supplier: { select: { id: true, name: true, code: true } },

@@ -318,6 +318,7 @@ model Document {
   fileSize             String?
   fileType             String               @default("invoice")
   mimeType             String?
+  fileBase64           String?
   uploadDate           DateTime             @default(now())
   uploadedById         String
   uploadedBy           User                 @relation("DocumentUploader", fields: [uploadedById], references: [id])

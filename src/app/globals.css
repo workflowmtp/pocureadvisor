@@ -2213,3 +2213,84 @@ body {
     font-size: var(--fs-sm);
     color: var(--accent-blue);
 }
+
+
+/* OCR Chat HTML Response Styles */
+
+.ocr-chat-html h2 {
+    font-size: 1.1em;
+    font-weight: 600;
+    margin-top: 12px;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+}
+
+.ocr-chat-html h3 {
+    font-size: 1em;
+    font-weight: 600;
+    margin-top: 10px;
+    margin-bottom: 6px;
+    color: var(--text-primary);
+}
+
+.ocr-chat-html p {
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+}
+
+.ocr-chat-html ul {
+    margin-left: 16px;
+    margin-bottom: 8px;
+}
+
+.ocr-chat-html ol {
+    margin-left: 16px;
+    margin-bottom: 8px;
+}
+
+.ocr-chat-html li {
+    margin-bottom: 4px;
+    color: var(--text-secondary);
+}
+
+.ocr-chat-html strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.ocr-chat-html code {
+    background: var(--bg-card);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.ocr-chat-html blockquote {
+    border-left: 3px solid var(--accent-blue);
+    padding-left: 12px;
+    margin-left: 0;
+    color: var(--text-secondary);
+}
+
+.ocr-chat-html table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 8px;
+}
+
+.ocr-chat-html th,
+.ocr-chat-html td {
+    padding: 6px 10px;
+    border: 1px solid var(--border-primary);
+    text-align: left;
+}
+
+.ocr-chat-html th {
+    background: var(--bg-card);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.ocr-chat-html td {
+    color: var(--text-secondary);
+}
