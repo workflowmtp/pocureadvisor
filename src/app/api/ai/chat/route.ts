@@ -5,22 +5,34 @@ import { auth } from '@/lib/auth';
 const OCR_DOCUMENT_CHAT_WEBHOOK_URL = 'https://n8n.mtb-app.com/webhook/d22c20c5-8813-4615-a35b-07a48fc97e12';
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  try {
+    const session = await auth();
+    if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const body = await req.json();
-  const { message, query, context, conversationHistory } = body;
-  const prompt = query || message;
-  
-  console.log('[AI CHAT API] Received body:', JSON.stringify({ message, query, context, hasContext: !!context }));
-  
-  if (!prompt) return NextResponse.json({ error: 'Message required' }, { status: 400 });
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+    
+    const { message, query, context, conversationHistory } = body;
+    const prompt = query || message;
+    
+    console.log('[AI CHAT API] Received body:', JSON.stringify({ message, query, context, hasContext: !!context }));
+    
+    if (!prompt) return NextResponse.json({ error: 'Message required' }, { status: 400 });
 
-  const contextData = await buildContext(context);
+    const contextData = await buildContext(context);
 
-  await prisma.activityLog.create({
-    data: { userId: session.user.id!, userName: session.user.name!, action: 'ai_query', module: 'ai', details: 'Question: ' + prompt.substring(0, 100), aiInvolved: true },
-  });
+    try {
+      await prisma.activityLog.create({
+        data: { userId: session.user.id!, userName: session.user.name!, action: 'ai_query', module: 'ai', details: 'Question: ' + prompt.substring(0, 100), aiInvolved: true },
+      });
+    } catch (logError) {
+      console.error('[AI CHAT API] Failed to log activity:', logError);
+      // Continue even if logging fails
+    }
 
   if (context) {
     const payload = { query: prompt, context };
@@ -136,6 +148,13 @@ export async function POST(req: NextRequest) {
 
   const response = generateLocalResponse(prompt, contextData);
   return NextResponse.json({ response, actions: detectActions(response), source: 'fallback' });
+  } catch (error: any) {
+    console.error('[AI CHAT API] Global error:', error);
+    return NextResponse.json(
+      { error: 'Erreur interne du serveur', details: error?.message || 'Erreur inconnue' },
+      { status: 500 }
+    );
+  }
 }
 
 async function buildContext(documentId?: string) {

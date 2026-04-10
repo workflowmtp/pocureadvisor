@@ -314,8 +314,26 @@ export default function OcrPage() {
       });
 
       console.log('[OCR CHAT] API response status:', res.status);
-      const data = await res.json();
-      console.log('[OCR CHAT] API response data:', data);
+      
+      // Get raw text first to handle both JSON and plain text responses
+      const rawText = await res.text();
+      console.log('[OCR CHAT] Raw response:', rawText.substring(0, 500));
+      
+      // Try to parse as JSON
+      let data: any;
+      try {
+        data = JSON.parse(rawText);
+        console.log('[OCR CHAT] Parsed JSON data:', data);
+      } catch {
+        // Not valid JSON - show raw error
+        console.error('[OCR CHAT] Response is not valid JSON');
+        setDocChatMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `<div style="color: #EF4444;"><strong>Erreur serveur:</strong><br/><code style="background: rgba(239,68,68,0.1); padding: 8px; border-radius: 4px; display: block; margin-top: 8px; word-break: break-all;">${rawText}</code></div>`,
+          timestamp: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        }]);
+        return;
+      }
 
       if (!res.ok) {
         // Handle HTTP error responses
