@@ -77,29 +77,29 @@ function generateLocalResponse(message: string, ctx: any): string {
 
   if (msg.includes('rupture') || msg.includes('stock'))
     return ctx.summary.ruptureRisk > 0
-      ? `⚠️ **${ctx.summary.ruptureRisk} commande(s) avec risque de rupture de stock.**\n\n` + ctx.lateOrders.filter((o: string) => o.includes('RUPTURE')).map((o: string) => `• ${o}`).join('\n') + `\n\n**Actions recommandées :**\n• Relancer immédiatement les fournisseurs\n• Vérifier les stocks de sécurité\n• Identifier des alternatives d'urgence`
-      : '✅ Aucun risque de rupture identifié actuellement.';
+      ? `**Résumé**\n${ctx.summary.ruptureRisk} commande(s) présentent un risque de rupture de stock imminent.\n\n**Points critiques / Anomalies**\n` + ctx.lateOrders.filter((o: string) => o.includes('RUPTURE')).map((o: string) => `* ${o}`).join('\n') + `\n\n**Recommandations**\n* Relancer immédiatement les fournisseurs concernés\n* Vérifier les stocks de sécurité\n* Identifier des sources alternatives d'approvisionnement\n* Prévenir les pôles impactés`
+      : `**Résumé**\nAucun risque de rupture identifié actuellement.\n\n**Recommandations**\n* Continuer le monitoring des stocks\n* Maintenir les alertes proactives`;
 
   if (msg.includes('anomal') || msg.includes('alerte') || msg.includes('problème'))
-    return `🛡️ **${ctx.summary.openAnomalies} anomalies ouvertes dont ${ctx.summary.criticalAnomalies} critiques.**\n\nImpact : **${ctx.summary.totalFinancialImpact.toLocaleString('fr-FR')} FCFA**\n\n**Critiques :**\n` + ctx.criticalAnomalies.map((a: string) => `🔴 ${a}`).join('\n') + `\n\n**Actions :** Traiter les P1 en priorité, programmer les entretiens.`;
+    return `**Résumé**\n${ctx.summary.openAnomalies} anomalies ouvertes dont ${ctx.summary.criticalAnomalies} critiques. Impact total: ${ctx.summary.totalFinancialImpact.toLocaleString('fr-FR')} FCFA.\n\n**Points critiques / Anomalies**\n` + ctx.criticalAnomalies.map((a: string) => `* ${a}`).join('\n') + `\n\n**Recommandations**\n* Traiter les P1 en priorité absolue\n* Programmer les entretiens avec les fournisseurs\n* Documenter les résolutions pour capitalisation`;
 
   if (msg.includes('fournisseur') || msg.includes('scoring') || msg.includes('risque'))
-    return `🏢 **${ctx.summary.activeSuppliers} fournisseurs, ${ctx.summary.riskSuppliers} à risque.**\n\n**À risque :**\n` + ctx.suppliers.filter((s: string) => s.includes('risk=critical') || s.includes('risk=high')).map((s: string) => `⚠️ ${s}`).join('\n') + `\n\n**Top 5 :**\n` + ctx.suppliers.slice(0, 5).map((s: string, i: number) => `${i + 1}. ${s}`).join('\n');
+    return `**Résumé**\n${ctx.summary.activeSuppliers} fournisseurs actifs, ${ctx.summary.riskSuppliers} identifiés à risque.\n\n**Points critiques / Anomalies**\n` + ctx.suppliers.filter((s: string) => s.includes('risk=critical') || s.includes('risk=high')).map((s: string) => `* ${s}`).join('\n') + `\n\n**Recommandations**\n* Planifier des audits pour les fournisseurs critiques\n* Diversifier les sources d'approvisionnement\n* Renégocier les contrats à risque`;
 
   if (msg.includes('économi') || msg.includes('saving') || msg.includes('optimis'))
-    return `💰 **Opportunités :**\n\n• **Anomalies prix** : ${ctx.summary.totalFinancialImpact.toLocaleString('fr-FR')} FCFA récupérables\n• **Matières en baisse** : ${ctx.summary.opportunities} opportunité(s)\n• **Négociations** : ${ctx.summary.activeNegotiations} en cours\n\n` + ctx.materials.filter((m: string) => m.includes('opportunity')).map((m: string) => `📉 ${m}`).join('\n');
+    return `**Résumé**\nPotentiel d'économies: ${ctx.summary.totalFinancialImpact.toLocaleString('fr-FR')} FCFA via résolution anomalies, ${ctx.summary.opportunities} opportunités matières, ${ctx.summary.activeNegotiations} négociations en cours.\n\n**Points critiques / Anomalies**\n* Anomalies prix: ${ctx.summary.totalFinancialImpact.toLocaleString('fr-FR')} FCFA récupérables\n` + ctx.materials.filter((m: string) => m.includes('opportunity')).map((m: string) => `* ${m}`).join('\n') + `\n\n**Recommandations**\n* Prioriser les négociations à fort enjeu\n* Exploiter les baisses de prix matières\n* Documenter les gains réalisés`;
 
   if (msg.includes('commande') || msg.includes('retard') || msg.includes('livraison'))
-    return `📦 **${ctx.summary.pendingOrders} commandes en cours, ${ctx.summary.lateOrders} en retard.**\n\n` + ctx.lateOrders.map((o: string) => `⏰ ${o}`).join('\n') + `\n\n**Actions :** Relancer > 7j, escalader > 15j.`;
+    return `**Résumé**\n${ctx.summary.pendingOrders} commandes en cours, ${ctx.summary.lateOrders} en retard.\n\n**Points critiques / Anomalies**\n` + ctx.lateOrders.map((o: string) => `* ${o}`).join('\n') + `\n\n**Recommandations**\n* Relancer les commandes > 7 jours retard\n* Escalader les commandes > 15 jours retard\n* Mettre à jour les délais prévisionnels`;
 
   if (msg.includes('négo') || msg.includes('contrat'))
-    return `🤝 **${ctx.summary.activeNegotiations} négociation(s) active(s) :**\n\n` + ctx.negotiations.map((n: string) => `• ${n}`).join('\n');
+    return `**Résumé**\n${ctx.summary.activeNegotiations} négociation(s) active(s).\n\n**Points critiques / Anomalies**\n` + ctx.negotiations.map((n: string) => `* ${n}`).join('\n') + `\n\n**Recommandations**\n* Préparer les arguments pour chaque négociation\n* Définir les limites de concession\n* Planifier les réunions de validation`;
 
   if (msg.includes('matière') || msg.includes('marché') || msg.includes('prix') || msg.includes('cours'))
-    return `📊 **Veille matières :**\n\n` + ctx.materials.map((m: string) => `${m.includes('risk') ? '📈⚠️' : m.includes('opportunity') ? '📉✅' : '→'} ${m}`).join('\n');
+    return `**Résumé**\nVeille matières premières: ${ctx.materials.length} matières suivies.\n\n**Points critiques / Anomalies**\n` + ctx.materials.map((m: string) => `* ${m}`).join('\n') + `\n\n**Recommandations**\n* Anticiper les hausses de prix\n* Verrouiller les contrats sur les matières en baisse\n* Adapter les stratégies d'achat`;
 
   // Default summary
-  return `🤖 **ProcureBot — Résumé temps réel :**\n\n• **${ctx.summary.activeSuppliers}** fournisseurs (${ctx.summary.riskSuppliers} à risque)\n• **${ctx.summary.pendingOrders}** commandes (${ctx.summary.lateOrders} retard, ${ctx.summary.ruptureRisk} rupture)\n• **${ctx.summary.openAnomalies}** anomalies (${ctx.summary.criticalAnomalies} critiques)\n• **${ctx.summary.activeNegotiations}** négociations\n• Impact : **${ctx.summary.totalFinancialImpact.toLocaleString('fr-FR')} FCFA**\n\nQue souhaitez-vous analyser ?`;
+  return `**Résumé**\nTableau de bord: ${ctx.summary.activeSuppliers} fournisseurs (${ctx.summary.riskSuppliers} à risque), ${ctx.summary.pendingOrders} commandes (${ctx.summary.lateOrders} retard, ${ctx.summary.ruptureRisk} rupture), ${ctx.summary.openAnomalies} anomalies (${ctx.summary.criticalAnomalies} critiques), ${ctx.summary.activeNegotiations} négociations. Impact: ${ctx.summary.totalFinancialImpact.toLocaleString('fr-FR')} FCFA.\n\n**Points critiques / Anomalies**\n* ${ctx.summary.riskSuppliers} fournisseurs à surveiller\n* ${ctx.summary.criticalAnomalies} anomalies critiques à traiter\n* ${ctx.summary.ruptureRisk} risques de rupture\n\n**Recommandations**\n* Consulter les détails par module\n* Prioriser les actions critiques\n* Planifier les revues fournisseurs`;
 }
 
 function detectActions(response: string): { label: string; href: string }[] {
