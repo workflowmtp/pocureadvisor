@@ -333,6 +333,7 @@ model Document {
   amountTtc            Float?
   ocrStatus            OcrStatus            @default(pending)
   ocrConfidence        Float?
+  ocrRawText           String?              // Text extracted by Tesseract.js
   pipelineStage        Int                  @default(1)
   reconciliationStatus ReconciliationStatus @default(pending)
   variances            Json?
@@ -345,6 +346,7 @@ model Document {
 enum OcrStatus {
   pending
   processing
+  partial    // Tesseract extracted text, but not fully processed
   extracted
   failed
 }

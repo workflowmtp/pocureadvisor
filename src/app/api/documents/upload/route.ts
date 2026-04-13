@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { auth } from '@/lib/auth';
+import Tesseract from 'tesseract.js';
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
@@ -31,11 +32,38 @@ export async function POST(req: NextRequest) {
 
     console.log('[OCR] Upload started:', file.name, 'size:', file.size, 'mime:', mimeType);
 
-    // Analyser avec Claude
+    // Step 1: Extract text with Tesseract.js (for images only)
+    let tesseractText = '';
+    let tesseractConfidence = 0;
+    const isImage = mimeType.startsWith('image/');
+    
+    if (isImage) {
+      try {
+        console.log('[OCR] Starting Tesseract.js extraction...');
+        const tesseractResult = await Tesseract.recognize(
+          buffer,
+          'fra+eng', // French + English
+          {
+            logger: (m) => {
+              if (m.status === 'recognizing text') {
+                console.log('[OCR] Tesseract progress:', Math.round(m.progress * 100) + '%');
+              }
+            },
+          }
+        );
+        tesseractText = tesseractResult.data.text;
+        tesseractConfidence = tesseractResult.data.confidence / 100;
+        console.log('[OCR] Tesseract done. Text length:', tesseractText.length, 'Confidence:', tesseractConfidence.toFixed(2));
+      } catch (tessErr: any) {
+        console.error('[OCR] Tesseract error:', tessErr.message);
+      }
+    }
+
+    // Step 2: Analyser avec Claude (with Tesseract text as context)
     let ocrResult = null;
     let ocrError = null;
     try {
-      ocrResult = await analyzeDocumentWithClaude(base64Data, mimeType, fileType);
+      ocrResult = await analyzeDocumentWithClaude(base64Data, mimeType, fileType, tesseractText);
       console.log('[OCR] Claude result:', ocrResult ? 'SUCCESS' : 'NULL');
     } catch (err: any) {
       ocrError = err.message;
@@ -51,8 +79,9 @@ export async function POST(req: NextRequest) {
         mimeType: mimeType,
         fileBase64: base64Data,
         uploadedById: session.user.id!,
-        ocrStatus: ocrResult ? 'extracted' : 'pending',
-        ocrConfidence: ocrResult?.confidence ? parseFloat(String(ocrResult.confidence)) : null,
+        ocrStatus: ocrResult ? 'extracted' : (tesseractText ? 'partial' : 'pending'),
+        ocrConfidence: ocrResult?.confidence ? parseFloat(String(ocrResult.confidence)) : (tesseractConfidence || null),
+        ocrRawText: tesseractText || null,
         supplierId: ocrResult?.supplierId || null,
         invoiceNumber: ocrResult?.invoiceNumber || null,
         poNumber: ocrResult?.poNumber || null,
@@ -76,8 +105,8 @@ export async function POST(req: NextRequest) {
         userName: session.user.name!,
         action: 'document_upload',
         module: 'ocr',
-        details: `Upload: ${file.name} - OCR: ${ocrResult ? 'OK' : 'FAIL: ' + (ocrError || 'no API key')}`,
-        aiInvolved: !!ocrResult,
+        details: `Upload: ${file.name} - Tesseract: ${tesseractText ? 'OK (' + tesseractText.length + ' chars)' : 'N/A'} - Claude: ${ocrResult ? 'OK' : 'FAIL: ' + (ocrError || 'no API key')}`,
+        aiInvolved: !!ocrResult || !!tesseractText,
       },
     });
 
@@ -90,6 +119,11 @@ export async function POST(req: NextRequest) {
       },
       ocrResult,
       ocrError,
+      tesseract: tesseractText ? {
+        text: tesseractText,
+        confidence: tesseractConfidence,
+        length: tesseractText.length,
+      } : null,
     });
 
   } catch (error: any) {
@@ -104,7 +138,8 @@ export async function POST(req: NextRequest) {
 async function analyzeDocumentWithClaude(
   base64: string,
   mimeType: string,
-  docType: string
+  docType: string,
+  tesseractText?: string
 ): Promise<any> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
@@ -123,7 +158,11 @@ async function analyzeDocumentWithClaude(
     return null;
   }
 
-  const prompt = `Analysez ce document (${docType === 'invoice' ? 'facture' : docType}) et extrayez TOUTES les informations au format JSON strict. Répondez UNIQUEMENT avec le JSON, sans texte avant ni après.
+  const tesseractContext = tesseractText 
+    ? `\n\nTEXTE EXTRAIT PAR OCR TESSERACT (utilisez-le pour confirmer/corriger les informations):\n"""\n${tesseractText.substring(0, 2000)}\n"""\n` 
+    : '';
+
+  const prompt = `Analysez ce document (${docType === 'invoice' ? 'facture' : docType}) et extrayez TOUTES les informations au format JSON strict. Répondez UNIQUEMENT avec le JSON, sans texte avant ni après.${tesseractContext}
 
 {
   "documentType": "invoice|quote|po|bl|contract|certificate|other",
