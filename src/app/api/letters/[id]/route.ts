@@ -49,7 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   await prisma.activityLog.create({
-    data: { userId: session.user.id!, userName: session.user.name!, action: 'update', module: 'letters', entityId: id, details: 'Courrier ' + action },
+    data: { id: crypto.randomUUID(), userId: session.user.id!, userName: session.user.name!, action: 'update', module: 'letters', entityId: id, details: 'Courrier ' + action },
   });
 
   return NextResponse.json({ success: true });

@@ -28,14 +28,16 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const comp = await prisma.quoteComparison.create({
     data: {
+      id: crypto.randomUUID(),
       subject: body.subject,
       createdById: session.user.id,
       status: 'active',
+      updatedAt: new Date(),
     },
   });
 
   await prisma.activityLog.create({
-    data: { userId: session.user.id!, userName: session.user.name!, action: 'create', module: 'quotes', entityId: comp.id, details: 'Comparatif créé: ' + body.subject },
+    data: { id: crypto.randomUUID(), userId: session.user.id!, userName: session.user.name!, action: 'create', module: 'quotes', entityId: comp.id, details: 'Comparatif créé: ' + body.subject },
   });
 
   return NextResponse.json(comp, { status: 201 });

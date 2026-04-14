@@ -97,6 +97,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const letterType = body.letterType || 'rfq';
       await prisma.letter.create({
         data: {
+          id: crypto.randomUUID(),
           type: letterType,
           supplierId: nego.supplierId,
           subject: 'Courrier — ' + nego.subject,
@@ -105,6 +106,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           generatedBy: 'negotiation',
           body: body.letterBody || 'Courrier généré depuis la négociation: ' + nego.subject,
           createdById: session.user.id!,
+          updatedAt: new Date(),
         },
       });
       await log(session.user.id!, userName, 'create', 'letters', id, 'Courrier généré depuis négociation');
@@ -119,5 +121,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 async function log(userId: string, userName: string, action: string, module: string, entityId: string, details: string) {
-  await prisma.activityLog.create({ data: { userId, userName, action, module, entityId, details } });
+  await prisma.activityLog.create({ data: { id: crypto.randomUUID(), userId, userName, action, module, entityId, details } });
 }

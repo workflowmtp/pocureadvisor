@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const material = await prisma.rawMaterial.create({
     data: {
+      id: crypto.randomUUID(),
       name: body.name,
       category: body.category,
       unit: body.unit || '$/t',
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest) {
       trend: body.trend || 'stable',
       impactedPoles: body.impactedPoles || [],
       alertType: body.alertType || 'neutral',
+      updatedAt: new Date(),
     },
   });
 

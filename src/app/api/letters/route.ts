@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   if (type) where.type = type;
   if (status) where.status = status;
 
-  const letters = await prisma.letter.findMany({
+  const rawLetters = await prisma.letter.findMany({
     where,
     include: {
       supplier: { select: { id: true, name: true, code: true } },
@@ -25,6 +25,12 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: 'desc' },
     take: 100,
   });
+
+  // Truncate body for list view — full body loaded only in detail (/api/letters/[id])
+  const letters = rawLetters.map(({ body, ...rest }) => ({
+    ...rest,
+    body: body.length > 200 ? body.slice(0, 200) + '…' : body,
+  }));
 
   // Count by type
   const allLetters = await prisma.letter.findMany({ where: { isDeleted: false }, select: { type: true, status: true } });
@@ -52,6 +58,7 @@ export async function POST(req: NextRequest) {
 
   const letter = await prisma.letter.create({
     data: {
+      id: crypto.randomUUID(),
       type: body.type,
       supplierId: body.supplierId || null,
       subject: body.subject,
@@ -60,11 +67,13 @@ export async function POST(req: NextRequest) {
       generatedBy: body.generateAI ? 'ia' : 'manual',
       body: letterBody,
       createdById: session.user.id!,
+      updatedAt: new Date(),
     },
   });
 
   await prisma.activityLog.create({
     data: {
+      id: crypto.randomUUID(),
       userId: session.user.id!, userName: session.user.name!, action: 'create', module: 'letters',
       entityId: letter.id, details: 'Courrier créé: ' + body.subject, aiInvolved: !!body.generateAI,
     },

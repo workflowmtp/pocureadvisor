@@ -7,437 +7,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ═══════════════════════════════════════════════════════════════
-// AUTH & USERS
-// ═══════════════════════════════════════════════════════════════
-
-// ─── Permissions (fonctionnalités) ───
-
-model Permission {
-  id          String   @id @default(cuid())
-  code        String   @unique        // ex: "suppliers.view", "orders.create"
-  name        String                  // ex: "Voir les fournisseurs"
-  description String?
-  category    String                  // ex: "suppliers", "orders", "audit"
-  isSystem    Boolean  @default(false) // Cannot be deleted if true
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  roles RolePermission[]
-}
-
-// ─── Roles personnalisables ───
-
-model Role {
-  id          String   @id @default(cuid())
-  code        String   @unique        // ex: "admin", "acheteur", custom
-  name        String                  // ex: "Administrateur", "Acheteur"
-  description String?
-  isSystem    Boolean  @default(false) // Cannot be deleted if true
-  isDefault   Boolean  @default(false) // Default role for new users
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  users       User[]
-  permissions RolePermission[]
-}
-
-// ─── Relation Role <-> Permission ───
-
-model RolePermission {
-  roleId       String
-  permissionId String
-  createdAt    DateTime @default(now())
-  
-  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  
-  @@id([roleId, permissionId])
-}
-
-// ─── Users ───
-
-model User {
-  id           String   @id @default(cuid())
-  username     String   @unique
-  passwordHash String
-  fullName     String
-  email        String   @unique
-  roleId       String?
-  role         Role?    @relation(fields: [roleId], references: [id])
-  avatar       String
-  poleIds      String[]
-  isActive     Boolean  @default(true)
-  loginCount   Int      @default(0)
-  lastLoginAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  anomaliesAssigned  Anomaly[]      @relation("AnomalyUser")
-  anomaliesResolved  Anomaly[]      @relation("AnomalyResolver")
-  documentsUploaded  Document[]     @relation("DocumentUploader")
-  documentsAssigned  Document[]     @relation("DocumentAssignee")
-  lettersCreated     Letter[]
-  activityLogs       ActivityLog[]
-  notifications      Notification[]
-}
-
-// ═══════════════════════════════════════════════════════════════
-// REFERENTIAL
-// ═══════════════════════════════════════════════════════════════
-
-model PurchaseCategory {
-  id        String     @id @default(cuid())
-  code      String     @unique
-  name      String     @unique
-  families  String[]
-  suppliers Supplier[]
-}
-
-model Pole {
-  id        String  @id @default(cuid())
-  code      String  @unique
-  name      String
-  color     String
-  managerId String?
-}
-
-model AuditRule {
-  id       String   @id @default(cuid())
-  code     String   @unique
-  name     String
-  category String
-  severity Severity
-  isActive Boolean  @default(true)
-}
-
-// ═══════════════════════════════════════════════════════════════
-// SUPPLIERS
-// ═══════════════════════════════════════════════════════════════
-
-model Supplier {
-  id               String         @id @default(cuid())
-  code             String         @unique
-  name             String
-  country          String
-  city             String?
-  currency         String         @default("XAF")
-  categoryId       String
-  category         PurchaseCategory @relation(fields: [categoryId], references: [id])
-  status           SupplierStatus @default(active)
-  riskLevel        RiskLevel      @default(low)
-  scoreGlobal      Int            @default(50)
-  scoreQuality     Int            @default(50)
-  scorePrice       Int            @default(50)
-  scoreDelivery    Int            @default(50)
-  scoreDoc         Int            @default(50)
-  scoreReactivity  Int            @default(50)
-  scoreRegularity  Int            @default(50)
-  trend            Trend          @default(stable)
-  dependencyRatio  Float          @default(0)
-  volumeYtd        Float          @default(0)
-  incidentsCount   Int            @default(0)
-  anomaliesCount   Int            @default(0)
-  incotermDefault  String?
-  paymentTerms     String?
-  contactName      String?
-  contactEmail     String?
-  contactPhone     String?
-  certifications   String[]
-  avgLeadTimeDays  Int            @default(0)
-  contractRef      String?
-  contractExpiry   DateTime?
-  x3Id             String?
-  x3SyncStatus     X3SyncStatus   @default(synced)
-  isDeleted        Boolean        @default(false)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-
-  orders       Order[]
-  anomalies    Anomaly[]
-  invoices     Invoice[]
-  documents    Document[]
-  negotiations Negotiation[]
-  letters      Letter[]
-  quoteLines   QuoteLine[]
-}
-
-enum SupplierStatus {
-  active
-  probation
-  suspended
-  blocked
-  strategic
-  backup
-  to_replace
-}
-
-enum RiskLevel {
-  critical
-  high
-  medium
-  low
-}
-
-enum Trend {
-  rising
-  stable
-  declining
-}
-
-enum X3SyncStatus {
-  synced
-  conflict
-  not_linked
-}
-
-// ═══════════════════════════════════════════════════════════════
-// ARTICLES
-// ═══════════════════════════════════════════════════════════════
-
-model Article {
-  id                    String        @id @default(cuid())
-  code                  String        @unique
-  designation           String
-  familyId              String
-  unit                  String        @default("kg")
-  poleIds               String[]
-  supplierIds           String[]
-  criticalLevel         CriticalLevel @default(standard)
-  safetyStockDays       Int           @default(15)
-  avgMonthlyConsumption Float         @default(0)
-  currentStock          Float         @default(0)
-  x3Id                  String?
-  isDeleted             Boolean       @default(false)
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
-
-  orderLines OrderLine[]
-}
-
-enum CriticalLevel {
-  vital
-  critical
-  important
-  standard
-}
-
-// ═══════════════════════════════════════════════════════════════
-// ORDERS
-// ═══════════════════════════════════════════════════════════════
-
-model Order {
-  id             String      @id @default(cuid())
-  poNumber       String      @unique
-  supplierId     String
-  supplier       Supplier    @relation(fields: [supplierId], references: [id])
-  poleId         String
-  dateCreated    DateTime
-  dateExpected   DateTime
-  dateReceived   DateTime?
-  totalAmount    Float
-  currency       String      @default("XAF")
-  status         OrderStatus @default(created)
-  isLate         Boolean     @default(false)
-  delayDays      Int         @default(0)
-  riskOfStockout Boolean     @default(false)
-  x3Id           String?
-  x3SyncStatus   X3SyncStatus @default(synced)
-  isDeleted      Boolean     @default(false)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-
-  lines     OrderLine[]
-  anomalies Anomaly[]
-  invoices  Invoice[]
-}
-
-enum OrderStatus {
-  created
-  validated
-  confirmed
-  in_transit
-  partially_received
-  received
-  closed
-}
-
-model OrderLine {
-  id          String   @id @default(cuid())
-  orderId     String
-  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  articleId   String?
-  article     Article? @relation(fields: [articleId], references: [id])
-  description String
-  quantity    Float
-  unitPrice   Float
-  totalPrice  Float
-  unit        String   @default("kg")
-}
-
-// ═══════════════════════════════════════════════════════════════
-// INVOICES
-// ═══════════════════════════════════════════════════════════════
-
-model Invoice {
-  id                 String        @id @default(cuid())
-  invoiceNumber      String        @unique
-  supplierId         String
-  supplier           Supplier      @relation(fields: [supplierId], references: [id])
-  dateInvoice        DateTime
-  dateReceived       DateTime?
-  dateDue            DateTime?
-  amountHt           Float
-  amountTva          Float         @default(0)
-  amountTtc          Float
-  currency           String        @default("XAF")
-  orderId            String?
-  order              Order?        @relation(fields: [orderId], references: [id])
-  status             InvoiceStatus @default(pending)
-  isDuplicateSuspect Boolean       @default(false)
-  isDeleted          Boolean       @default(false)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-}
-
-enum InvoiceStatus {
-  pending
-  approved
-  disputed
-  blocked
-  paid
-}
-
-// ═══════════════════════════════════════════════════════════════
-// DOCUMENTS / OCR
-// ═══════════════════════════════════════════════════════════════
-
-model Document {
-  id                   String               @id @default(cuid())
-  fileName             String
-  fileSize             String?
-  fileType             String               @default("invoice")
-  mimeType             String?
-  fileBase64           String?
-  uploadDate           DateTime             @default(now())
-  uploadedById         String
-  uploadedBy           User                 @relation("DocumentUploader", fields: [uploadedById], references: [id])
-  assignedToId         String?
-  assignedTo           User?                @relation("DocumentAssignee", fields: [assignedToId], references: [id])
-  supplierId           String?
-  supplier             Supplier?            @relation(fields: [supplierId], references: [id])
-  invoiceNumber        String?
-  poNumber             String?
-  amountHt             Float?
-  amountTva            Float?
-  amountTtc            Float?
-  ocrStatus            OcrStatus            @default(pending)
-  ocrConfidence        Float?
-  ocrRawText           String?              // Text extracted by Tesseract.js
-  pipelineStage        Int                  @default(1)
-  reconciliationStatus ReconciliationStatus @default(pending)
-  variances            Json?
-  comments             Json?
-  isDeleted            Boolean              @default(false)
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
-}
-
-enum OcrStatus {
-  pending
-  processing
-  partial    // Tesseract extracted text, but not fully processed
-  extracted
-  failed
-}
-
-enum ReconciliationStatus {
-  pending
-  conforme
-  ecart_mineur
-  ecart_majeur
-  critical
-  validated
-}
-
-// ═══════════════════════════════════════════════════════════════
-// ANOMALIES / AUDIT
-// ═══════════════════════════════════════════════════════════════
-
-model Anomaly {
-  id              String        @id @default(cuid())
-  category        String
-  subCategory     String?
-  severity        Severity
-  priority        Int           @default(3)
-  title           String
-  description     String?
-  detectionMethod String?
-  ruleId          String?
-  supplierId      String?
-  supplier        Supplier?     @relation(fields: [supplierId], references: [id])
-  userId          String?
-  user            User?         @relation("AnomalyUser", fields: [userId], references: [id])
-  poleId          String?
-  orderId         String?
-  order           Order?        @relation(fields: [orderId], references: [id])
-  financialImpact Float?
-  dateDetected    DateTime
-  dateResolved    DateTime?
-  status          AnomalyStatus @default(open)
-  resolutionNotes String?
-  resolvedById    String?
-  resolvedBy      User?         @relation("AnomalyResolver", fields: [resolvedById], references: [id])
-  isDeleted       Boolean       @default(false)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-}
-
-enum Severity {
-  critical
-  high
-  medium
-  low
-  info
-}
-
-enum AnomalyStatus {
-  open
-  investigating
-  escalated
-  resolved
-  dismissed
-}
-
-// ═══════════════════════════════════════════════════════════════
-// SOURCING
-// ═══════════════════════════════════════════════════════════════
-
-model RawMaterial {
-  id            String    @id @default(cuid())
-  name          String
-  category      String
-  unit          String
-  currency      String    @default("USD")
-  currentPrice  Float
-  previousPrice Float
-  variationPct  Float     @default(0)
-  trend         Trend     @default(stable)
-  impactedPoles String[]
-  alertType     AlertType @default(neutral)
-  isDeleted     Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-}
-
-enum AlertType {
-  opportunity
-  risk
-  neutral
+model ActivityLog {
+  id         String   @id
+  userId     String?
+  userName   String?
+  action     String
+  module     String?
+  entityId   String?
+  details    String?
+  aiInvolved Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id])
 }
 
 model AlternativeSupplier {
-  id              String            @id @default(cuid())
+  id              String            @id
   categoryId      String
   name            String
   country         String
@@ -453,26 +37,165 @@ model AlternativeSupplier {
   lastContactDate DateTime?
   isDeleted       Boolean           @default(false)
   createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  updatedAt       DateTime
 }
 
-enum AltSupplierStatus {
-  identified
-  to_contact
-  in_discussion
-  qualified
-  in_test
-  rejected
+model Anomaly {
+  id                              String        @id
+  category                        String
+  subCategory                     String?
+  severity                        Severity
+  priority                        Int           @default(3)
+  title                           String
+  description                     String?
+  detectionMethod                 String?
+  ruleId                          String?
+  supplierId                      String?
+  userId                          String?
+  poleId                          String?
+  orderId                         String?
+  financialImpact                 Float?
+  dateDetected                    DateTime
+  dateResolved                    DateTime?
+  status                          AnomalyStatus @default(open)
+  resolutionNotes                 String?
+  resolvedById                    String?
+  isDeleted                       Boolean       @default(false)
+  createdAt                       DateTime      @default(now())
+  updatedAt                       DateTime
+  order      Order?    @relation(fields: [orderId], references: [id])
+  resolvedBy User?     @relation("Anomaly_resolvedByIdToUser", fields: [resolvedById], references: [id])
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+  user       User?     @relation("Anomaly_userIdToUser", fields: [userId], references: [id])
 }
 
-// ═══════════════════════════════════════════════════════════════
-// NEGOTIATIONS
-// ═══════════════════════════════════════════════════════════════
+model Article {
+  id                    String        @id
+  code                  String        @unique
+  designation           String
+  familyId              String
+  unit                  String        @default("kg")
+  poleIds               String[]
+  supplierIds           String[]
+  criticalLevel         CriticalLevel @default(standard)
+  safetyStockDays       Int           @default(15)
+  avgMonthlyConsumption Float         @default(0)
+  currentStock          Float         @default(0)
+  x3Id                  String?
+  isDeleted             Boolean       @default(false)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime
+  orderLines OrderLine[]
+}
+
+model AuditRule {
+  id       String   @id
+  code     String   @unique
+  name     String
+  category String
+  severity Severity
+  isActive Boolean  @default(true)
+}
+
+model Document {
+  id                               String               @id
+  fileName                         String
+  fileSize                         String?
+  fileType                         String               @default("invoice")
+  mimeType                         String?
+  uploadDate                       DateTime             @default(now())
+  uploadedById                     String
+  assignedToId                     String?
+  supplierId                       String?
+  invoiceNumber                    String?
+  poNumber                         String?
+  amountHt                         Float?
+  amountTva                        Float?
+  amountTtc                        Float?
+  ocrStatus                        OcrStatus            @default(pending)
+  ocrConfidence                    Float?
+  pipelineStage                    Int                  @default(1)
+  reconciliationStatus             ReconciliationStatus @default(pending)
+  variances                        Json?
+  comments                         Json?
+  isDeleted                        Boolean              @default(false)
+  createdAt                        DateTime             @default(now())
+  updatedAt                        DateTime
+  ocrRawText                       String?
+  folderId                         String?
+  ocrFullText                      String?
+  assignedTo User?     @relation("Document_assignedToIdToUser", fields: [assignedToId], references: [id])
+  folder     Folder?   @relation(fields: [folderId], references: [id])
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+  uploadedBy User      @relation("Document_uploadedByIdToUser", fields: [uploadedById], references: [id])
+
+  @@index([folderId])
+}
+
+model Folder {
+  id           String     @id
+  name         String
+  description  String?
+  color        String?    @default("#3B82F6")
+  icon         String?    @default("folder")
+  parentId     String?
+  createdById  String
+  isDeleted    Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime
+  report       Json?
+  reportReady  Boolean    @default(false)
+  reportStatus String     @default("idle")
+  documents Document[]
+  createdBy User      @relation(fields: [createdById], references: [id])
+  parent    Folder?   @relation("FolderToFolder", fields: [parentId], references: [id])
+  children  Folder[]  @relation("FolderToFolder")
+
+  @@index([createdById])
+  @@index([parentId])
+}
+
+model Invoice {
+  id                 String        @id
+  invoiceNumber      String        @unique
+  supplierId         String
+  dateInvoice        DateTime
+  dateReceived       DateTime?
+  dateDue            DateTime?
+  amountHt           Float
+  amountTva          Float         @default(0)
+  amountTtc          Float
+  currency           String        @default("XAF")
+  orderId            String?
+  status             InvoiceStatus @default(pending)
+  isDuplicateSuspect Boolean       @default(false)
+  isDeleted          Boolean       @default(false)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime
+  order    Order?   @relation(fields: [orderId], references: [id])
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+}
+
+model Letter {
+  id          String       @id
+  type        LetterType
+  supplierId  String?
+  subject     String
+  tone        String       @default("diplomatic")
+  status      LetterStatus @default(draft)
+  generatedBy String       @default("manual")
+  body        String
+  createdById String
+  isDeleted   Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime
+  createdBy User      @relation(fields: [createdById], references: [id])
+  supplier  Supplier? @relation(fields: [supplierId], references: [id])
+}
 
 model Negotiation {
-  id              String            @id @default(cuid())
+  id              String            @id
   supplierId      String?
-  supplier        Supplier?         @relation(fields: [supplierId], references: [id])
   subject         String
   category        String?
   dateStart       DateTime
@@ -486,74 +209,282 @@ model Negotiation {
   rounds          Json?
   isDeleted       Boolean           @default(false)
   createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  updatedAt       DateTime
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
 }
 
-enum NegotiationStatus {
-  preparation
-  in_progress
-  pending_decision
-  closed_won
-  closed_lost
-  cancelled
+model Notification {
+  id                String    @id
+  userId            String?
+  title             String
+  message           String
+  severity          Severity  @default(info)
+  isRead            Boolean   @default(false)
+  readAt            DateTime?
+  relatedEntityType String?
+  relatedEntityId   String?
+  createdAt         DateTime  @default(now())
+  user User? @relation(fields: [userId], references: [id])
 }
 
-// ═══════════════════════════════════════════════════════════════
-// QUOTE COMPARISONS
-// ═══════════════════════════════════════════════════════════════
+model Order {
+  id             String       @id
+  poNumber       String       @unique
+  supplierId     String
+  poleId         String
+  dateCreated    DateTime
+  dateExpected   DateTime
+  dateReceived   DateTime?
+  totalAmount    Float
+  currency       String       @default("XAF")
+  status         OrderStatus  @default(created)
+  isLate         Boolean      @default(false)
+  delayDays      Int          @default(0)
+  riskOfStockout Boolean      @default(false)
+  x3Id           String?
+  x3SyncStatus   X3SyncStatus @default(synced)
+  isDeleted      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime
+  anomalies  Anomaly[]
+  invoices   Invoice[]
+  supplier   Supplier   @relation(fields: [supplierId], references: [id])
+  orderLines OrderLine[]
+}
+
+model OrderLine {
+  id          String   @id
+  orderId     String
+  articleId   String?
+  description String
+  quantity    Float
+  unitPrice   Float
+  totalPrice  Float
+  unit        String   @default("kg")
+  article Article? @relation(fields: [articleId], references: [id])
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model Permission {
+  id             String           @id
+  code           String           @unique
+  name           String
+  description    String?
+  category       String
+  isSystem       Boolean          @default(false)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime
+  rolePermissions RolePermission[]
+}
+
+model Pole {
+  id        String  @id
+  code      String  @unique
+  name      String
+  color     String
+  managerId String?
+}
+
+model PurchaseCategory {
+  id       String     @id
+  code     String     @unique
+  name     String     @unique
+  families String[]
+  suppliers Supplier[]
+}
 
 model QuoteComparison {
-  id          String   @id @default(cuid())
+  id          String      @id
   subject     String
-  dateCreated DateTime @default(now())
+  dateCreated DateTime    @default(now())
   createdById String?
-  status      String   @default("active")
-  isDeleted   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  lines QuoteLine[]
+  status      String      @default("active")
+  isDeleted   Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime
+  quoteLines QuoteLine[]
 }
 
 model QuoteLine {
-  id             String          @id @default(cuid())
-  comparisonId   String
-  comparison     QuoteComparison @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
-  supplierId     String?
-  supplier       Supplier?       @relation(fields: [supplierId], references: [id])
-  supplierName   String
-  unitPrice      Float
-  landedCost     Float
-  freightCost    Float           @default(0)
-  moq            String?
-  leadTime       Int             @default(0)
-  incoterm       String?
-  paymentTerms   String?
-  certifications String[]
-  tco            Float           @default(0)
-  score          Int             @default(50)
-  reco           String?
+  id              String          @id
+  comparisonId    String
+  supplierId      String?
+  supplierName    String
+  unitPrice       Float
+  landedCost      Float
+  freightCost     Float           @default(0)
+  moq             String?
+  leadTime        Int             @default(0)
+  incoterm        String?
+  paymentTerms    String?
+  certifications  String[]
+  tco             Float           @default(0)
+  score           Int             @default(50)
+  reco            String?
+  comparison QuoteComparison @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
+  supplier   Supplier?      @relation(fields: [supplierId], references: [id])
 }
 
-// ═══════════════════════════════════════════════════════════════
-// LETTERS
-// ═══════════════════════════════════════════════════════════════
+model RawMaterial {
+  id            String    @id
+  name          String
+  category      String
+  unit          String
+  currency      String    @default("USD")
+  currentPrice  Float
+  previousPrice Float
+  variationPct  Float     @default(0)
+  trend         Trend     @default(stable)
+  impactedPoles String[]
+  alertType     AlertType @default(neutral)
+  isDeleted     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime
+}
 
-model Letter {
-  id          String       @id @default(cuid())
-  type        LetterType
-  supplierId  String?
-  supplier    Supplier?    @relation(fields: [supplierId], references: [id])
-  subject     String
-  tone        String       @default("diplomatic")
-  status      LetterStatus @default(draft)
-  generatedBy String       @default("manual")
-  body        String
-  createdById String
-  createdBy   User         @relation(fields: [createdById], references: [id])
-  isDeleted   Boolean      @default(false)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+model Role {
+  id             String           @id
+  code           String           @unique
+  name           String
+  description    String?
+  isSystem       Boolean          @default(false)
+  isDefault      Boolean          @default(false)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime
+  rolePermissions RolePermission[]
+  users           User[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  createdAt    DateTime   @default(now())
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model Setting {
+  id    String @id
+  key   String @unique
+  value Json
+}
+
+model Supplier {
+  id               String           @id
+  code             String           @unique
+  name             String
+  country          String
+  city             String?
+  currency         String           @default("XAF")
+  categoryId       String
+  status           SupplierStatus   @default(active)
+  riskLevel        RiskLevel        @default(low)
+  scoreGlobal      Int              @default(50)
+  scoreQuality     Int              @default(50)
+  scorePrice       Int              @default(50)
+  scoreDelivery    Int              @default(50)
+  scoreDoc         Int              @default(50)
+  scoreReactivity  Int              @default(50)
+  scoreRegularity  Int              @default(50)
+  trend            Trend            @default(stable)
+  dependencyRatio  Float            @default(0)
+  volumeYtd        Float            @default(0)
+  incidentsCount   Int              @default(0)
+  anomaliesCount   Int              @default(0)
+  incotermDefault  String?
+  paymentTerms     String?
+  contactName      String?
+  contactEmail     String?
+  contactPhone     String?
+  certifications   String[]
+  avgLeadTimeDays  Int              @default(0)
+  contractRef      String?
+  contractExpiry   DateTime?
+  x3Id             String?
+  x3SyncStatus     X3SyncStatus     @default(synced)
+  isDeleted        Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime
+  anomalies    Anomaly[]
+  documents    Document[]
+  invoices     Invoice[]
+  letters      Letter[]
+  negotiations Negotiation[]
+  orders       Order[]
+  quoteLines   QuoteLine[]
+  category     PurchaseCategory @relation(fields: [categoryId], references: [id])
+}
+
+model User {
+  id                                   String         @id
+  username                             String         @unique
+  passwordHash                         String
+  fullName                             String
+  email                                String         @unique
+  avatar                               String
+  poleIds                              String[]
+  isActive                             Boolean        @default(true)
+  loginCount                           Int            @default(0)
+  lastLoginAt                          DateTime?
+  createdAt                            DateTime       @default(now())
+  updatedAt                            DateTime
+  roleId                               String?
+  activityLogs      ActivityLog[]
+  resolvedAnomalies Anomaly[]      @relation("Anomaly_resolvedByIdToUser")
+  anomalies         Anomaly[]      @relation("Anomaly_userIdToUser")
+  assignedDocuments Document[]     @relation("Document_assignedToIdToUser")
+  uploadedDocuments Document[]     @relation("Document_uploadedByIdToUser")
+  folders           Folder[]
+  letters           Letter[]
+  notifications     Notification[]
+  role              Role?          @relation(fields: [roleId], references: [id])
+}
+
+enum AlertType {
+  opportunity
+  risk
+  neutral
+}
+
+enum AltSupplierStatus {
+  identified
+  to_contact
+  in_discussion
+  qualified
+  in_test
+  rejected
+}
+
+enum AnomalyStatus {
+  open
+  investigating
+  escalated
+  resolved
+  dismissed
+}
+
+enum CriticalLevel {
+  vital
+  critical
+  important
+  standard
+}
+
+enum InvoiceStatus {
+  pending
+  approved
+  disputed
+  blocked
+  paid
+}
+
+enum LetterStatus {
+  draft
+  ready
+  sent
+  archived
 }
 
 enum LetterType {
@@ -567,54 +498,75 @@ enum LetterType {
   clarification
 }
 
-enum LetterStatus {
-  draft
-  ready
-  sent
-  archived
+enum NegotiationStatus {
+  preparation
+  in_progress
+  pending_decision
+  closed_won
+  closed_lost
+  cancelled
 }
 
-// ═══════════════════════════════════════════════════════════════
-// NOTIFICATIONS
-// ═══════════════════════════════════════════════════════════════
-
-model Notification {
-  id                String   @id @default(cuid())
-  userId            String?
-  user              User?    @relation(fields: [userId], references: [id])
-  title             String
-  message           String
-  severity          Severity @default(info)
-  isRead            Boolean  @default(false)
-  readAt            DateTime?
-  relatedEntityType String?
-  relatedEntityId   String?
-  createdAt         DateTime @default(now())
+enum OcrStatus {
+  pending
+  processing
+  extracted
+  failed
+  partial
 }
 
-// ═══════════════════════════════════════════════════════════════
-// ACTIVITY LOG
-// ═══════════════════════════════════════════════════════════════
-
-model ActivityLog {
-  id         String   @id @default(cuid())
-  userId     String?
-  user       User?    @relation(fields: [userId], references: [id])
-  userName   String?
-  action     String
-  module     String?
-  entityId   String?
-  details    String?
-  aiInvolved Boolean  @default(false)
-  createdAt  DateTime @default(now())
+enum OrderStatus {
+  created
+  validated
+  confirmed
+  in_transit
+  partially_received
+  received
+  closed
 }
 
-// ═══════════════════════════════════════════════════════════════
-// SETTINGS
-// ═══════════════════════════════════════════════════════════════
+enum ReconciliationStatus {
+  pending
+  conforme
+  ecart_mineur
+  ecart_majeur
+  critical
+  validated
+}
 
-model Setting {
-  id    String @id @default(cuid())
-  key   String @unique
-  value Json
+enum RiskLevel {
+  critical
+  high
+  medium
+  low
+}
+
+enum Severity {
+  critical
+  high
+  medium
+  low
+  info
+}
+
+enum SupplierStatus {
+  active
+  probation
+  suspended
+  blocked
+  strategic
+  backup
+  to_replace
+}
+
+enum Trend {
+  rising
+  stable
+  declining
+}
+
+enum X3SyncStatus {
+  synced
+  conflict
+  not_linked
 }

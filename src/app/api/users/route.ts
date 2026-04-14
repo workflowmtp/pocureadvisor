@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
 
   const user = await prisma.user.create({
     data: {
+      id: crypto.randomUUID(),
       username,
       fullName,
       email,
@@ -80,6 +81,7 @@ export async function POST(req: NextRequest) {
       roleId,
       poleIds: poleIds || [],
       avatar: fullName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2),
+      updatedAt: new Date(),
     },
     include: { role: true },
   });
@@ -87,6 +89,7 @@ export async function POST(req: NextRequest) {
   // Log action
   await prisma.activityLog.create({
     data: {
+      id: crypto.randomUUID(),
       userId: session.user.id,
       userName: session.user.name,
       action: 'create',

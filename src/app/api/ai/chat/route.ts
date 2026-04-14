@@ -19,14 +19,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
     
-    const { message, query, context, conversationHistory } = body;
+    const { message, query, context, conversationHistory, folderId } = body;
     const prompt = query || message;
-    
-    console.log('[AI CHAT API] Received body:', JSON.stringify({ message, query, context, hasContext: !!context }));
-    
+
+    console.log('[AI CHAT API] Received body:', JSON.stringify({ message, query, context, folderId, hasContext: !!context }));
+
     if (!prompt) return NextResponse.json({ error: 'Message required' }, { status: 400 });
 
-    const contextData = await buildContext(context);
+    const contextData = await buildContext(context, folderId);
 
     try {
       await prisma.activityLog.create({
@@ -37,8 +37,30 @@ export async function POST(req: NextRequest) {
       // Continue even if logging fails
     }
 
-  if (context) {
-    const payload = { query: prompt, context };
+  if (context || folderId) {
+    // Build context string for folder
+    let finalContext = context;
+    if (folderId && contextData?.mode === 'folder') {
+      const folder = contextData.folder;
+      finalContext = `Dossier: ${folder.name}
+Description: ${folder.description || 'Aucune'}
+Nombre de documents: ${folder.documentCount}
+Montant total TTC: ${folder.totalAmountTtc?.toLocaleString('fr-FR') || 'N/A'} FCFA
+
+Documents:
+${folder.documents.map((doc: any) => `
+- Fichier: ${doc.fileName}
+  Fournisseur: ${doc.supplier}
+  Numéro facture: ${doc.invoiceNumber || 'N/A'}
+  Numéro PO: ${doc.poNumber || 'N/A'}
+  Montant TTC: ${doc.amountTtc?.toLocaleString('fr-FR') || 'N/A'} FCFA
+  Statut OCR: ${doc.ocrStatus}
+  Étape pipeline: ${doc.pipelineStage}/7
+  Texte OCR: ${doc.ocrRawText || 'Non disponible'}
+`).join('\n')}`;
+    }
+
+    const payload = { query: prompt, context: finalContext };
     console.log('[OCR DOC CHAT] Sending request to n8n webhook:', OCR_DOCUMENT_CHAT_WEBHOOK_URL);
     console.log('[OCR DOC CHAT] Payload:', JSON.stringify(payload));
 
@@ -105,14 +127,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ response: finalResponse, actions: detectActions(finalResponse), source: 'n8n' });
     } catch (error: any) {
       console.error('[OCR DOC CHAT] Webhook call failed with error:', error?.name, error?.message);
-      
+
+      // Fallback to local response for folder context
+      if (folderId && contextData) {
+        console.log('[OCR DOC CHAT] Falling back to local response for folder context');
+        const localResponse = generateLocalResponse(prompt, contextData);
+        return NextResponse.json({ response: localResponse, actions: detectActions(localResponse), source: 'fallback' });
+      }
+
       if (error?.name === 'TimeoutError' || error?.message?.includes('timeout')) {
         return NextResponse.json(
           { error: 'Timeout: le webhook n8n met trop de temps à répondre (plus de 60 secondes)', details: 'Vérifiez que le workflow n8n est actif et optimisé' },
           { status: 504 }
         );
       }
-      
+
       return NextResponse.json(
         { error: 'Impossible de joindre le webhook n8n OCR', details: error?.message || 'Erreur inconnue' },
         { status: 502 }
@@ -160,7 +189,72 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function buildContext(documentId?: string) {
+async function buildContext(documentId?: string, folderId?: string) {
+  // Folder context - get all documents in folder
+  if (folderId) {
+    const folder = await prisma.folder.findUnique({
+      where: { id: folderId },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        documents: {
+          where: { isDeleted: false },
+          select: {
+            id: true,
+            fileName: true,
+            fileType: true,
+            invoiceNumber: true,
+            poNumber: true,
+            amountHt: true,
+            amountTva: true,
+            amountTtc: true,
+            ocrStatus: true,
+            ocrRawText: true,
+            pipelineStage: true,
+            reconciliationStatus: true,
+            variances: true,
+            supplier: { select: { name: true, code: true } },
+            uploadedBy: { select: { fullName: true } },
+          },
+        },
+      },
+    });
+
+    if (folder) {
+      const documents = folder.documents || [];
+      const totalAmount = documents.reduce((sum, doc) => sum + (doc.amountTtc || 0), 0);
+
+      return {
+        mode: 'folder',
+        folder: {
+          id: folder.id,
+          name: folder.name,
+          description: folder.description,
+          documentCount: documents.length,
+          totalAmountTtc: totalAmount,
+          documents: documents.map(doc => ({
+            id: doc.id,
+            fileName: doc.fileName,
+            fileType: doc.fileType,
+            supplier: doc.supplier?.name || 'Inconnu',
+            invoiceNumber: doc.invoiceNumber,
+            poNumber: doc.poNumber,
+            amountHt: doc.amountHt,
+            amountTva: doc.amountTva,
+            amountTtc: doc.amountTtc,
+            ocrStatus: doc.ocrStatus,
+            ocrRawText: doc.ocrRawText?.substring(0, 1000) || null,
+            pipelineStage: doc.pipelineStage,
+            reconciliationStatus: doc.reconciliationStatus,
+            variances: doc.variances || [],
+            uploadedBy: doc.uploadedBy?.fullName || null,
+          })),
+        },
+      };
+    }
+  }
+
   if (documentId) {
     const document = await prisma.document.findUnique({
       where: { id: documentId },
@@ -239,6 +333,53 @@ async function buildContext(documentId?: string) {
 
 function generateLocalResponse(message: string, ctx: any): string {
   const msg = message.toLowerCase();
+
+  // Folder context
+  if (ctx?.mode === 'folder' && ctx.folder) {
+    const folder = ctx.folder;
+    const docs = folder.documents || [];
+
+    if (msg.includes('résumé') || msg.includes('résume') || msg.includes('synthèse')) {
+      const suppliers = [...new Set(docs.map((d: any) => d.supplier))];
+      const amounts = docs.filter((d: any) => d.amountTtc).map((d: any) => d.amountTtc);
+      const totalAmount = amounts.reduce((a: number, b: number) => a + b, 0);
+
+      return `**Résumé du dossier "${folder.name}"**\n\nCe dossier contient **${folder.documentCount} documents** pour un montant total de **${totalAmount.toLocaleString('fr-FR')} FCFA**.\n\n**Fournisseurs concernés:** ${suppliers.join(', ')}\n\n**Statut OCR:**\n* ${docs.filter((d: any) => d.ocrStatus === 'extracted').length} documents extraits\n* ${docs.filter((d: any) => d.ocrStatus === 'pending').length} en attente\n\n**Étapes pipeline:**\n${docs.map((d: any) => `* ${d.fileName}: étape ${d.pipelineStage}/7`).join('\n')}`;
+    }
+
+    if (msg.includes('montant') || msg.includes('total') || msg.includes('somme')) {
+      const amounts = docs.filter((d: any) => d.amountTtc).map((d: any) => d.amountTtc);
+      const totalAmount = amounts.reduce((a: number, b: number) => a + b, 0);
+      const avgAmount = amounts.length > 0 ? totalAmount / amounts.length : 0;
+
+      return `**Analyse des montants**\n\n* **Total TTC:** ${totalAmount.toLocaleString('fr-FR')} FCFA\n* **Moyenne par document:** ${avgAmount.toLocaleString('fr-FR')} FCFA\n* **Documents avec montant:** ${amounts.length}/${docs.length}\n\n**Détail par document:**\n${docs.filter((d: any) => d.amountTtc).map((d: any) => `* ${d.fileName}: ${d.amountTtc?.toLocaleString('fr-FR')} FCFA (${d.supplier})`).join('\n')}`;
+    }
+
+    if (msg.includes('anomalie') || msg.includes('écart') || msg.includes('problème')) {
+      const docsWithVariances = docs.filter((d: any) => d.variances && d.variances.length > 0);
+      const allVariances = docsWithVariances.flatMap((d: any) =>
+        (d.variances || []).map((v: any) => ({ ...v, document: d.fileName }))
+      );
+
+      if (allVariances.length === 0) {
+        return `**Aucune anomalie détectée**\n\nTous les documents de ce dossier ne présentent pas d'écarts signalés.`;
+      }
+
+      return `**Anomalies détectées**\n\n${allVariances.length} écart(s) trouvé(s) dans ${docsWithVariances.length} document(s):\n\n${allVariances.map((v: any) => `* **${v.document}**: ${v.field || 'Écart'} ${v.diff_pct ? `(${v.diff_pct}%)` : ''} ${v.severity ? `[${v.severity}]` : ''}`).join('\n')}`;
+    }
+
+    if (msg.includes('fournisseur')) {
+      const supplierCounts: Record<string, number> = {};
+      docs.forEach((d: any) => {
+        supplierCounts[d.supplier] = (supplierCounts[d.supplier] || 0) + 1;
+      });
+
+      return `**Fournisseurs du dossier**\n\n${Object.entries(supplierCounts).map(([name, count]) => `* **${name}**: ${count} document(s)`).join('\n')}`;
+    }
+
+    // Default folder response
+    return `**Dossier "${folder.name}"**\n\n${folder.description || 'Aucune description'}\n\n**Contenu:**\n* ${folder.documentCount} documents\n* Montant total: ${folder.totalAmountTtc?.toLocaleString('fr-FR') || 'N/A'} FCFA\n\n**Documents:**\n${docs.slice(0, 5).map((d: any) => `* ${d.fileName} - ${d.supplier} (${d.ocrStatus})`).join('\n')}${docs.length > 5 ? `\n* ... et ${docs.length - 5} autres` : ''}\n\nPosez-moi une question sur ce dossier !`;
+  }
 
   if (ctx?.mode === 'document' && ctx.document) {
     const doc = ctx.document;

@@ -18,7 +18,27 @@
     }
     .main-content {
         margin-left: 0;
-        padding: var(--sp-4);
+        padding: var(--sp-3);
+    }
+    /* Topbar mobile */
+    .topbar {
+        padding: 0 var(--sp-3);
+        gap: var(--sp-2);
+    }
+    .topbar-title {
+        font-size: var(--fs-md);
+        max-width: 140px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    /* Tables — horizontal scroll */
+    .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .data-table {
+        min-width: 640px;
     }
     /* KPI Cards - 1 column on mobile */
     .kpi-grid {
@@ -43,6 +63,9 @@
     /* Tables - horizontal scroll on mobile */
     .table-container {
         overflow-x: auto;
+    }
+    .filter-search {
+        min-width: 200px;
     }
     .data-table {
         min-width: 600px;
@@ -87,6 +110,9 @@
 /* Tablet (768px - 1024px) */
 
 @media (min-width: 768px) and (max-width: 1024px) {
+    .topbar {
+        padding: 0 var(--sp-4);
+    }
     /* KPI Cards - 2 columns on tablet */
     .kpi-grid {
         grid-template-columns: repeat(2, 1fr);
@@ -1532,7 +1558,7 @@ body {
 }
 
 .topbar-search input {
-    width: 240px;
+    width: 200px;
     padding: 8px 14px 8px 36px;
     background: var(--bg-input);
     border: 1px solid var(--border-primary);
@@ -1636,6 +1662,19 @@ body {
 
 .filter-select:focus {
     border-color: var(--accent-blue);
+}
+
+@media (max-width: 640px) {
+    .filter-search {
+        min-width: 100%;
+    }
+    .filters-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .filter-select {
+        width: 100%;
+    }
 }
 
 

@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
 
   const rawDocuments = await prisma.document.findMany({
     where,
+    omit: { ocrRawText: true, ocrFullText: true },
     include: {
       supplier: { select: { id: true, name: true, code: true } },
       uploadedBy: { select: { fullName: true } },

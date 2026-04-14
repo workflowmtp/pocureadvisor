@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAppStore } from '@/stores/appStore';
 
 export function BadgeUpdater() {
   const updateBadges = useAppStore((s) => s.updateBadges);
+  const updateBadgesRef = useRef(updateBadges);
+  updateBadgesRef.current = updateBadges;
 
   useEffect(() => {
     async function fetchBadges() {
@@ -12,7 +14,7 @@ export function BadgeUpdater() {
         const res = await fetch('/api/notifications?countOnly=true');
         if (res.ok) {
           const data = await res.json();
-          updateBadges({
+          updateBadgesRef.current({
             unreadNotifs: data.unreadNotifs ?? 0,
             openAnomalies: data.openAnomalies ?? 0,
             lateOrders: data.lateOrders ?? 0,
@@ -25,9 +27,9 @@ export function BadgeUpdater() {
     }
 
     fetchBadges();
-    const interval = setInterval(fetchBadges, 60000); // Poll every 60s
+    const interval = setInterval(fetchBadges, 120000); // Poll every 2min
     return () => clearInterval(interval);
-  }, [updateBadges]);
+  }, []); // Empty deps — stable ref via useRef
 
   return null;
 }

@@ -91,13 +91,13 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* ─── Filtres ─── */}
-      <div className="flex items-center gap-4 p-4 bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg">
+      <div className="flex flex-wrap items-center gap-3 p-3 sm:p-4 bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg">
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-[var(--text-secondary)]">Période</label>
+          <label className="text-xs sm:text-sm font-medium text-[var(--text-secondary)]">Période</label>
           <select 
             value={periodFilter} 
             onChange={(e) => setPeriodFilter(e.target.value)}
-            className="px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-lg text-sm focus:outline-none"
+            className="px-2 sm:px-3 py-1.5 sm:py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-lg text-xs sm:text-sm focus:outline-none"
           >
             <option value="30j">30 jours</option>
             <option value="90j">90 jours</option>
@@ -105,11 +105,11 @@ export default function DashboardPage() {
           </select>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-[var(--text-secondary)]">Pôle</label>
+          <label className="text-xs sm:text-sm font-medium text-[var(--text-secondary)]">Pôle</label>
           <select 
             value={poleFilter} 
             onChange={(e) => setPoleFilter(e.target.value)}
-            className="px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-lg text-sm focus:outline-none"
+            className="px-2 sm:px-3 py-1.5 sm:py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-lg text-xs sm:text-sm focus:outline-none"
           >
             <option value="all">Tous les pôles</option>
             <option value="industrial">Industriel</option>

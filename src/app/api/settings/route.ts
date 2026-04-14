@@ -31,10 +31,10 @@ export async function POST(req: NextRequest) {
   const { key, value } = body;
   if (!key) return NextResponse.json({ error: 'Key required' }, { status: 400 });
 
-  await prisma.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
+  await prisma.setting.upsert({ where: { key }, update: { value }, create: { id: crypto.randomUUID(), key, value } });
 
   await prisma.activityLog.create({
-    data: { userId: session.user.id!, userName: session.user.name!, action: 'update', module: 'settings', details: 'Paramètre modifié: ' + key },
+    data: { id: crypto.randomUUID(), userId: session.user.id!, userName: session.user.name!, action: 'update', module: 'settings', details: 'Paramètre modifié: ' + key },
   });
 
   return NextResponse.json({ success: true });

@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
 
     const nego = await prisma.negotiation.create({
       data: {
+        id: crypto.randomUUID(),
         subject: body.subject || 'Consultation — ' + alt.name,
         category: '',
         dateStart: new Date(),
@@ -54,11 +55,12 @@ export async function POST(req: NextRequest) {
         status: 'preparation',
         strategy: body.strategy || 'Consultation fournisseur alternatif: ' + alt.name + ' (' + alt.country + ')',
         rounds: [],
+        updatedAt: new Date(),
       },
     });
 
     await prisma.activityLog.create({
-      data: { userId: session.user.id!, userName: session.user.name!, action: 'create', module: 'negotiations', entityId: nego.id, details: 'Négociation créée depuis fournisseur alternatif: ' + alt.name },
+      data: { id: crypto.randomUUID(), userId: session.user.id!, userName: session.user.name!, action: 'create', module: 'negotiations', entityId: nego.id, details: 'Négociation créée depuis fournisseur alternatif: ' + alt.name },
     });
 
     return NextResponse.json({ negotiation: nego }, { status: 201 });
@@ -67,6 +69,7 @@ export async function POST(req: NextRequest) {
   // Default: create new alternative supplier
   const alt = await prisma.alternativeSupplier.create({
     data: {
+      id: crypto.randomUUID(),
       categoryId: body.categoryId,
       name: body.name,
       country: body.country,
@@ -82,11 +85,12 @@ export async function POST(req: NextRequest) {
       relevanceScore: 50,
       comparisonNotes: body.notes || null,
       discoveryDate: new Date(),
+      updatedAt: new Date(),
     },
   });
 
   await prisma.activityLog.create({
-    data: { userId: session.user.id!, userName: session.user.name!, action: 'create', module: 'alternatives', entityId: alt.id, details: 'Fournisseur alternatif créé: ' + alt.name },
+    data: { id: crypto.randomUUID(), userId: session.user.id!, userName: session.user.name!, action: 'create', module: 'alternatives', entityId: alt.id, details: 'Fournisseur alternatif créé: ' + alt.name },
   });
 
   return NextResponse.json(alt, { status: 201 });

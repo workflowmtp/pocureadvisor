@@ -94,6 +94,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   // Log action
   await prisma.activityLog.create({
     data: {
+      id: crypto.randomUUID(),
       userId: session.user.id,
       userName: session.user.name,
       action: 'update',
@@ -142,6 +143,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   // Log action
   await prisma.activityLog.create({
     data: {
+      id: crypto.randomUUID(),
       userId: session.user.id,
       userName: session.user.name,
       action: 'delete',

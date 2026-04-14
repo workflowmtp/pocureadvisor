@@ -42,13 +42,16 @@ function LoginForm() {
       redirect: false,
     });
 
+    console.log('[LOGIN] SignIn result:', result);
     setLoading(false);
 
-    if (result?.error) {
-      setError('Adresse e-mail ou mot de passe incorrect');
-    } else {
-      // Force a full page navigation to ensure session is loaded
+    // Check ok FIRST — NextAuth v5 can return ok:true with a non-blocking error string
+    if (result?.ok) {
+      console.log('[LOGIN] Success, redirecting to dashboard');
       window.location.href = '/dashboard';
+    } else {
+      console.log('[LOGIN] Login failed:', result?.error);
+      setError('Adresse e-mail ou mot de passe incorrect');
     }
   }
 

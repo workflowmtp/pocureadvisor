@@ -8,6 +8,7 @@ export async function GET(req: NextRequest) {
 
   const negotiations = await prisma.negotiation.findMany({
     where: { isDeleted: false },
+    omit: { rounds: true },
     include: { supplier: { select: { id: true, name: true, code: true } } },
     orderBy: { dateStart: 'desc' },
   });
@@ -33,6 +34,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const nego = await prisma.negotiation.create({
     data: {
+      id: crypto.randomUUID(),
       supplierId: body.supplierId || null,
       subject: body.subject,
       category: body.category || '',
@@ -43,11 +45,12 @@ export async function POST(req: NextRequest) {
       status: 'preparation',
       strategy: body.strategy || '',
       rounds: [],
+      updatedAt: new Date(),
     },
   });
 
   await prisma.activityLog.create({
-    data: { userId: session.user.id!, userName: session.user.name!, action: 'create', module: 'negotiations', entityId: nego.id, details: 'Négociation créée: ' + body.subject },
+    data: { id: crypto.randomUUID(), userId: session.user.id!, userName: session.user.name!, action: 'create', module: 'negotiations', entityId: nego.id, details: 'Négociation créée: ' + body.subject },
   });
 
   return NextResponse.json(nego, { status: 201 });

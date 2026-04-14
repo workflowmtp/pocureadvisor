@@ -4,14 +4,14 @@ import { Fragment, useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import DOMPurify from 'dompurify';
 import { formatCurrency, formatDate, truncate } from '@/lib/format';
-import { 
-  UploadZone, 
-  OcrPipeline, 
-  DocumentCard, 
-  SplitAnalysis, 
-  VerdictBox, 
-  ReconciliationResults 
+import {
+  OcrPipeline,
+  DocumentCard,
+  SplitAnalysis,
+  VerdictBox,
+  ReconciliationResults
 } from '@/components/ocr/OcrComponents';
+import { FolderList } from '@/components/folders/FolderComponents';
 import KpiCard from '@/components/dashboard/KpiCard';
 import Modal from '@/components/ui/Modal';
 
@@ -201,11 +201,6 @@ export default function OcrPage() {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [docChatMessages, docChatLoading]);
-
-  const handleUploadComplete = useCallback((result: any) => {
-    console.log('Upload terminé:', result);
-    fetchData();
-  }, [fetchData]);
 
   const getActionSuccessMessage = (action: string) => {
     switch (action) {
@@ -816,9 +811,6 @@ export default function OcrPage() {
   // Vue principale
   return (
     <div>
-      {/* Zone d'upload */}
-      <UploadZone onUploadComplete={handleUploadComplete} />
-
       {/* Pipeline global avec compteurs */}
       <OcrPipeline currentStage={3} stageCounts={stageCounts} />
 
@@ -831,29 +823,10 @@ export default function OcrPage() {
         <KpiCard icon="✅" label="Validés" value={stats.conforme} color="green" />
       </div>
 
-      {/* Documents récents */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--sp-4)' }}>
-        <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 'var(--fw-bold)' }}>Documents récents</div>
-        <button className="btn btn-sm btn-secondary" onClick={() => router.push('/documents')}>
-          Voir bibliothèque complète
-        </button>
-      </div>
-
-      <div className="ocr-docs-grid">
-        {docs.filter((d: any) => (d.pipelineStage || 1) < 7).slice(0, 8).map((doc: any) => (
-          <DocumentCard 
-            key={doc.id} 
-            doc={doc} 
-            onClick={(id) => setCurrentDocId(id)} 
-          />
-        ))}
-      </div>
-
-      {docs.length === 0 && (
-        <div style={{ textAlign: 'center', padding: 'var(--sp-12)', fontSize: 'var(--fs-sm)', color: 'var(--text-tertiary)' }}>
-          Aucun document trouvé
-        </div>
-      )}
+      {/* Dossiers */}
+      <FolderList
+        onFolderSelect={(id) => router.push(`/folders/${id}`)}
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { compare } from 'bcryptjs';
 import prisma from '@/lib/prisma';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  trustHost: true,
   providers: [
     Credentials({
       name: 'credentials',
@@ -19,68 +20,73 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
-          include: {
-            role: {
-              include: {
-                permissions: {
-                  include: { permission: true },
+        try {
+          const user = await prisma.user.findUnique({
+            where: { email: credentials.email as string },
+            include: {
+              role: {
+                include: {
+                  permissions: {
+                    include: { permission: true },
+                  },
                 },
               },
             },
-          },
-        });
+          });
 
-        console.log('[AUTH] User found:', user ? user.email : 'NOT FOUND');
-        console.log('[AUTH] User isActive:', user?.isActive);
+          console.log('[AUTH] User found:', user ? user.email : 'NOT FOUND');
+          console.log('[AUTH] User isActive:', user?.isActive);
 
-        if (!user || !user.isActive) {
-          console.log('[AUTH] User not found or inactive');
+          if (!user || !user.isActive) {
+            console.log('[AUTH] User not found or inactive');
+            return null;
+          }
+
+          const isValid = await compare(credentials.password as string, user.passwordHash);
+          console.log('[AUTH] Password valid:', isValid);
+          
+          if (!isValid) {
+            console.log('[AUTH] Invalid password');
+            return null;
+          }
+
+          // Incrémenter le compteur de connexion (non bloquant)
+          prisma.user.update({
+            where: { id: user.id },
+            data: { loginCount: { increment: 1 }, lastLoginAt: new Date() },
+          }).catch(e => console.warn('[AUTH] loginCount update failed:', e.message));
+
+          // Log de connexion (non bloquant)
+          prisma.activityLog.create({
+            data: {
+              userId: user.id,
+              userName: user.fullName,
+              action: 'login',
+              module: 'auth',
+              details: `Connexion utilisateur: ${user.fullName}`,
+            },
+          }).catch(e => console.warn('[AUTH] activityLog failed:', e.message));
+
+          // Extract permission codes
+          const permissions = user.role?.permissions.map(rp => rp.permission.code) || [];
+
+          console.log('[AUTH] Returning user object with id:', user.id);
+
+          return {
+            id: user.id,
+            name: user.fullName,
+            email: user.email,
+            roleId: user.roleId,
+            roleCode: user.role?.code || '',
+            roleName: user.role?.name || '',
+            avatar: user.avatar,
+            poleIds: user.poleIds,
+            permissions,
+          };
+        } catch (error: any) {
+          console.error('[AUTH] authorize error:', error.message);
           return null;
         }
-
-        const isValid = await compare(credentials.password as string, user.passwordHash);
-        console.log('[AUTH] Password valid:', isValid);
-        
-        if (!isValid) {
-          console.log('[AUTH] Invalid password');
-          return null;
-        }
-
-        // Incrémenter le compteur de connexion
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { loginCount: { increment: 1 }, lastLoginAt: new Date() },
-        });
-
-        // Log de connexion
-        await prisma.activityLog.create({
-          data: {
-            userId: user.id,
-            userName: user.fullName,
-            action: 'login',
-            module: 'auth',
-            details: `Connexion utilisateur: ${user.fullName}`,
-          },
-        });
-
-        // Extract permission codes
-        const permissions = user.role?.permissions.map(rp => rp.permission.code) || [];
-
-        console.log('[AUTH] Returning user object with id:', user.id);
-
-        return {
-          id: user.id,
-          name: user.fullName,
-          email: user.email,
-          roleId: user.roleId,
-          roleCode: user.role?.code || '',
-          roleName: user.role?.name || '',
-          avatar: user.avatar,
-          poleIds: user.poleIds,
-          permissions,
-        };
       },
     }),
   ],

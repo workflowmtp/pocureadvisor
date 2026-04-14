@@ -1,10 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { auth } from '@/lib/auth';
-import Tesseract from 'tesseract.js';
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
+const REPORT_WEBHOOK_URL = 'https://n8n.mtb-app.com/webhook/614746dc-8b99-4cc2-af3b-9ac6ed5a5849';
+
+// Generate report for a folder (async, fire and forget)
+async function generateFolderReport(folderId: string): Promise<void> {
+  try {
+    console.log('[Report] Generating report for folder:', folderId);
+
+    const response = await fetch(REPORT_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Basic ' + Buffer.from('multiprint:Admin@1234').toString('base64'),
+      },
+      body: JSON.stringify({
+        query: 'generer le rapport du dossier',
+        context: folderId,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('[Report] Webhook failed:', response.status);
+      return;
+    }
+
+    const result = await response.json();
+    // Save the full webhook response as-is
+    const reportData = Array.isArray(result) ? result[0] : result;
+
+    // Save to database
+    await prisma.folder.update({
+      where: { id: folderId },
+      data: {
+        report: reportData,
+        updatedAt: new Date(),
+      },
+    });
+
+    console.log('[Report] Report saved for folder:', folderId);
+  } catch (error: any) {
+    console.error('[Report] Generation failed:', error.message);
+  }
+}
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -16,6 +57,7 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get('file') as File;
     const fileType = formData.get('fileType') as string || 'invoice';
+    const folderId = formData.get('folderId') as string || null;
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -32,64 +74,82 @@ export async function POST(req: NextRequest) {
 
     console.log('[OCR] Upload started:', file.name, 'size:', file.size, 'mime:', mimeType);
 
-    // Step 1: Extract text with Tesseract.js (for images only)
-    let tesseractText = '';
-    let tesseractConfidence = 0;
-    const isImage = mimeType.startsWith('image/');
+    // Get Tesseract text from client-side (already extracted in browser)
+    const tesseractText = formData.get('tesseractText') as string || '';
+    const tesseractConfidence = tesseractText ? 0.8 : 0; // Default confidence for client-side OCR
     
-    if (isImage) {
+    if (tesseractText) {
+      console.log('[OCR] Received Tesseract text from client. Length:', tesseractText.length);
+    }
+
+    // Check if this is a preview request (don't save yet)
+    const isPreview = formData.get('preview') === 'true';
+    
+    if (isPreview) {
+      // Return Tesseract text for preview - NO Claude analysis yet
+      return NextResponse.json({
+        success: true,
+        preview: true,
+        file: {
+          name: file.name,
+          size: formatFileSize(file.size),
+          type: fileType,
+          mimeType,
+        },
+        tesseract: tesseractText ? {
+          text: tesseractText,
+          fullLength: tesseractText.length,
+          confidence: tesseractConfidence,
+        } : null,
+        // No extractedData from Claude - user will request analysis if needed
+      });
+    }
+
+    // Parse edited data from user validation (if any)
+    let editedData = null;
+    const editedDataStr = formData.get('editedData') as string;
+    if (editedDataStr) {
       try {
-        console.log('[OCR] Starting Tesseract.js extraction...');
-        const tesseractResult = await Tesseract.recognize(
-          buffer,
-          'fra+eng', // French + English
-          {
-            logger: (m) => {
-              if (m.status === 'recognizing text') {
-                console.log('[OCR] Tesseract progress:', Math.round(m.progress * 100) + '%');
-              }
-            },
-          }
-        );
-        tesseractText = tesseractResult.data.text;
-        tesseractConfidence = tesseractResult.data.confidence / 100;
-        console.log('[OCR] Tesseract done. Text length:', tesseractText.length, 'Confidence:', tesseractConfidence.toFixed(2));
-      } catch (tessErr: any) {
-        console.error('[OCR] Tesseract error:', tessErr.message);
+        editedData = JSON.parse(editedDataStr);
+        console.log('[OCR] Using edited data from user validation');
+      } catch (e) {
+        console.warn('[OCR] Failed to parse editedData:', e);
       }
     }
 
-    // Step 2: Analyser avec Claude (with Tesseract text as context)
-    let ocrResult = null;
-    let ocrError = null;
-    try {
-      ocrResult = await analyzeDocumentWithClaude(base64Data, mimeType, fileType, tesseractText);
-      console.log('[OCR] Claude result:', ocrResult ? 'SUCCESS' : 'NULL');
-    } catch (err: any) {
-      ocrError = err.message;
-      console.error('[OCR] Claude error:', err.message);
-    }
+    // Use edited data if available (user manually entered data)
+    const finalData = editedData;
 
-    // Sauvegarder en base
+    // Build full OCR text (Tesseract only - no Claude analysis)
+    const ocrFullText = [
+      '=== TEXTE TESSERACT ===',
+      tesseractText || '(non disponible)',
+    ].join('\n');
+
+    // Sauvegarder en base (after user validation) - NO base64, only OCR text
     const document = await prisma.document.create({
       data: {
+        id: crypto.randomUUID(),
         fileName: file.name,
         fileSize: formatFileSize(file.size),
         fileType: fileType,
         mimeType: mimeType,
-        fileBase64: base64Data,
+        // fileBase64 removed - we store OCR text instead
         uploadedById: session.user.id!,
-        ocrStatus: ocrResult ? 'extracted' : (tesseractText ? 'partial' : 'pending'),
-        ocrConfidence: ocrResult?.confidence ? parseFloat(String(ocrResult.confidence)) : (tesseractConfidence || null),
+        folderId: folderId || null,
+        ocrStatus: finalData ? 'extracted' : (tesseractText ? 'partial' : 'pending'),
+        ocrConfidence: finalData?.confidence ? parseFloat(String(finalData.confidence)) : (tesseractConfidence || null),
         ocrRawText: tesseractText || null,
-        supplierId: ocrResult?.supplierId || null,
-        invoiceNumber: ocrResult?.invoiceNumber || null,
-        poNumber: ocrResult?.poNumber || null,
-        amountHt: ocrResult?.amountHt ? parseFloat(String(ocrResult.amountHt)) : null,
-        amountTva: ocrResult?.amountTva ? parseFloat(String(ocrResult.amountTva)) : null,
-        amountTtc: ocrResult?.amountTtc ? parseFloat(String(ocrResult.amountTtc)) : null,
-        pipelineStage: ocrResult ? 3 : 2,
+        ocrFullText: ocrFullText,
+        supplierId: finalData?.supplierId || null,
+        invoiceNumber: finalData?.invoiceNumber || null,
+        poNumber: finalData?.poNumber || null,
+        amountHt: finalData?.amountHt ? parseFloat(String(finalData.amountHt)) : null,
+        amountTva: finalData?.amountTva ? parseFloat(String(finalData.amountTva)) : null,
+        amountTtc: finalData?.amountTtc ? parseFloat(String(finalData.amountTtc)) : null,
+        pipelineStage: finalData ? 3 : 2,
         reconciliationStatus: 'pending',
+        updatedAt: new Date(),
       },
       include: {
         supplier: { select: { id: true, name: true, code: true } },
@@ -101,24 +161,32 @@ export async function POST(req: NextRequest) {
 
     await prisma.activityLog.create({
       data: {
+        id: crypto.randomUUID(),
         userId: session.user.id!,
         userName: session.user.name!,
         action: 'document_upload',
         module: 'ocr',
-        details: `Upload: ${file.name} - Tesseract: ${tesseractText ? 'OK (' + tesseractText.length + ' chars)' : 'N/A'} - Claude: ${ocrResult ? 'OK' : 'FAIL: ' + (ocrError || 'no API key')}`,
-        aiInvolved: !!ocrResult || !!tesseractText,
+        details: `Upload: ${file.name} - Tesseract: ${tesseractText ? 'OK (' + tesseractText.length + ' chars)' : 'N/A'}`,
+        aiInvolved: !!tesseractText,
       },
     });
 
+    // Trigger report generation asynchronously if folderId exists
+    if (folderId) {
+      // Fire and forget - don't wait for report generation
+      generateFolderReport(folderId).catch(err => {
+        console.error('[OCR] Report generation failed:', err);
+      });
+    }
+
     return NextResponse.json({
       success: true,
+      saved: true,
       document: {
         ...document,
-        ocrData: ocrResult,
-        extractedFields: ocrResult?.extractedFields || null,
+        ocrData: finalData,
+        extractedFields: finalData?.extractedFields || null,
       },
-      ocrResult,
-      ocrError,
       tesseract: tesseractText ? {
         text: tesseractText,
         confidence: tesseractConfidence,

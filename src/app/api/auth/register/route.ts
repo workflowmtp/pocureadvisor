@@ -69,6 +69,7 @@ export async function POST(request: NextRequest) {
     // Create user
     await prisma.user.create({
       data: {
+        id: crypto.randomUUID(),
         username,
         passwordHash,
         fullName: fullName.trim(),
@@ -76,6 +77,7 @@ export async function POST(request: NextRequest) {
         roleId: consultRole.id,
         avatar,
         poleIds: [],
+        updatedAt: new Date(),
       },
     });
 

@@ -66,25 +66,28 @@ export async function POST(req: NextRequest) {
 
   const role = await prisma.role.create({
     data: {
+      id: crypto.randomUUID(),
       code,
       name,
       description,
       isSystem: false,
       isDefault: false,
-      permissions: {
-        create: permissionIds?.map((id: string) => ({
-          permissionId: id,
+      updatedAt: new Date(),
+      rolePermissions: {
+        create: permissionIds?.map((pid: string) => ({
+          permissionId: pid,
         })) || [],
       },
     },
     include: {
-      permissions: { include: { permission: true } },
+      rolePermissions: { include: { permission: true } },
     },
   });
 
   // Log action
   await prisma.activityLog.create({
     data: {
+      id: crypto.randomUUID(),
       userId: session.user.id,
       userName: session.user.name,
       action: 'create',

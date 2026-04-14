@@ -61,6 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const tco = (body.unitPrice || 0) + (body.freightCost || 0);
       await prisma.quoteLine.create({
         data: {
+          id: crypto.randomUUID(),
           comparisonId: id,
           supplierId: body.supplierId || null,
           supplierName: body.supplierName,
@@ -91,6 +92,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const comp = await prisma.quoteComparison.findUnique({ where: { id } });
       const nego = await prisma.negotiation.create({
         data: {
+          id: crypto.randomUUID(),
           supplierId: body.supplierId || null,
           subject: 'Négociation suite comparatif — ' + (comp?.subject || ''),
           category: '',
@@ -100,6 +102,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           status: 'preparation',
           strategy: 'Négociation lancée depuis le comparatif de devis. Fournisseur: ' + (body.supplierName || ''),
           rounds: [],
+          updatedAt: new Date(),
         },
       });
       await log(session.user.id!, userName, 'create', 'negotiations', nego.id, 'Négociation créée depuis comparatif');
@@ -114,5 +117,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 async function log(userId: string, userName: string, action: string, module: string, entityId: string, details: string) {
-  await prisma.activityLog.create({ data: { userId, userName, action, module, entityId, details } });
+  await prisma.activityLog.create({ data: { id: crypto.randomUUID(), userId, userName, action, module, entityId, details } });
 }
