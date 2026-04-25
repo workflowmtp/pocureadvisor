@@ -17,5 +17,5 @@
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "prisma/seed-roles.ts", "prisma/seed.ts", "prisma/permissions.ts", "prisma/fix-roles.ts"]
 }
