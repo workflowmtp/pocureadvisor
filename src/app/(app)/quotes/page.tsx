@@ -251,7 +251,7 @@ export default function QuotesPage() {
                     )}
                   </div>
                   <div className="login-field mb-0">
-                    <label className="login-label block text-[var(--fs-sm)] font-medium text-[var(--text-secondary)] mb-2">Prix unitaire ({line.currency || 'FCFA'})</label>
+                    <label className="login-label block text-[var(--fs-sm)] font-medium text-[var(--text-secondary)] mb-2">Prix unitaire (FCFA)</label>
                     <input
                       type="number"
                       value={line.price}
