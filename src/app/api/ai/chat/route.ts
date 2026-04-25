@@ -6,6 +6,8 @@ import { auth } from '@/lib/auth';
 export const maxDuration = 60;
 
 const OCR_DOCUMENT_CHAT_WEBHOOK_URL = 'https://n8n.mtb-app.com/webhook/d22c20c5-8813-4615-a35b-07a48fc97e12';
+const AGENT_WEBHOOK_URL = 'https://n8n.mtb-app.com/webhook-test/analyse';
+const AGENT_AUTH = 'Basic ' + Buffer.from('multiprint:Admin@1234').toString('base64');
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,7 +32,7 @@ export async function POST(req: NextRequest) {
 
     try {
       await prisma.activityLog.create({
-        data: { userId: session.user.id!, userName: session.user.name!, action: 'ai_query', module: 'ai', details: 'Question: ' + prompt.substring(0, 100), aiInvolved: true },
+        data: { userId: session.user.id!, userName: session.user.name!, action: 'ai_query', module: 'ai', details: 'Question: ' + prompt.substring(0, 100), aiInvolved: true } as any,
       });
     } catch (logError) {
       console.error('[AI CHAT API] Failed to log activity:', logError);
@@ -149,34 +151,31 @@ ${folder.documents.map((doc: any) => `
     }
   }
 
-  // Try n8n webhook first
-  const webhookUrl = process.env.N8N_WEBHOOK_URL;
-  const n8nUser = process.env.N8N_USER;
-  const n8nPassword = process.env.N8N_PASSWORD;
-  
-  if (webhookUrl) {
-    try {
-      // Préparer les headers avec authentification Basic si disponible
-      const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      
-      if (n8nUser && n8nPassword) {
-        const auth = Buffer.from(`${n8nUser}:${n8nPassword}`).toString('base64');
-        headers['Authorization'] = `Basic ${auth}`;
+  // Try n8n agent
+  try {
+    const agentRes = await fetch(AGENT_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': AGENT_AUTH },
+      body: JSON.stringify({
+        query: prompt,
+        context: session.user.id,
+      }),
+      signal: AbortSignal.timeout(45000),
+    });
+    if (agentRes.ok) {
+      const raw = await agentRes.text();
+      let responseText = raw;
+      if (raw.trim().startsWith('{') || raw.trim().startsWith('[')) {
+        try {
+          const parsed = JSON.parse(raw);
+          responseText = parsed?.output || parsed?.response || parsed?.text || parsed?.message || raw;
+        } catch { /* use raw */ }
       }
-      
-      const res = await fetch(webhookUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ query: prompt, context: context || null, contextData, user: { name: session.user.name, role: (session.user as any).role }, history: conversationHistory || [] }),
-        signal: AbortSignal.timeout(30000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const responseText = data.output || data.response || data.text || JSON.stringify(data);
+      if (responseText.trim()) {
         return NextResponse.json({ response: responseText, actions: detectActions(responseText), source: 'n8n' });
       }
-    } catch { /* fallback */ }
-  }
+    }
+  } catch { /* fallback to local */ }
 
   const response = generateLocalResponse(prompt, contextData);
   return NextResponse.json({ response, actions: detectActions(response), source: 'fallback' });

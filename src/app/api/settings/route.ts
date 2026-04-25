@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   await prisma.setting.upsert({ where: { key }, update: { value }, create: { id: crypto.randomUUID(), key, value } });
 
   await prisma.activityLog.create({
-    data: { id: crypto.randomUUID(), userId: session.user.id!, userName: session.user.name!, action: 'update', module: 'settings', details: 'Paramètre modifié: ' + key },
+    data: { id: crypto.randomUUID(), userId: session.user.id!, userName: session.user.name!, action: 'update', module: 'settings', details: 'Paramètre modifié: ' + key } as any,
   });
 
   return NextResponse.json({ success: true });

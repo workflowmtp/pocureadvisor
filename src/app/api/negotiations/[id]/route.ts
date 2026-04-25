@@ -121,5 +121,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 async function log(userId: string, userName: string, action: string, module: string, entityId: string, details: string) {
-  await prisma.activityLog.create({ data: { id: crypto.randomUUID(), userId, userName, action, module, entityId, details } });
+  await prisma.activityLog.create({ data: { id: crypto.randomUUID(), userId, userName, action, module, entityId, details } as any });
 }

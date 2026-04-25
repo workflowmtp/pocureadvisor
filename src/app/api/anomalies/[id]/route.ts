@@ -7,19 +7,32 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
-  const anomaly = await prisma.anomaly.findUnique({
-    where: { id },
-    include: {
-      supplier: true,
-      user: { select: { id: true, fullName: true, role: { select: { name: true } } } },
-      order: { select: { id: true, poNumber: true, totalAmount: true } },
-      resolvedBy: { select: { fullName: true } },
-    },
-  });
+  const anomaly = await prisma.anomaly.findUnique({ where: { id } });
 
   if (!anomaly || anomaly.isDeleted) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  return NextResponse.json({ anomaly });
+  // Resolve supplier, user, rule
+  const [supplier, user, rule] = await Promise.all([
+    anomaly.supplierId
+      ? prisma.supplier.findFirst({ where: { code: anomaly.supplierId }, select: { id: true, code: true, name: true } })
+      : Promise.resolve(null),
+    anomaly.userId
+      ? prisma.user.findUnique({ where: { id: anomaly.userId }, select: { id: true, fullName: true } })
+      : Promise.resolve(null),
+    anomaly.ruleId
+      ? prisma.auditRule.findFirst({ where: { code: anomaly.ruleId }, select: { id: true, code: true, name: true, category: true, severity: true, isActive: true } })
+      : Promise.resolve(null),
+  ]);
+
+  return NextResponse.json({
+    anomaly: {
+      ...anomaly,
+      financialImpact: Number(anomaly.financialImpact || 0),
+      supplier: supplier ? { id: supplier.id, name: supplier.name } : null,
+      user: user ? { id: user.id, fullName: user.fullName } : null,
+      rule: rule ? { ...rule, active: rule.isActive } : null,
+    },
+  });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -65,5 +78,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 async function log(userId: string, userName: string, action: string, module: string, entityId: string, details: string) {
-  await prisma.activityLog.create({ data: { id: crypto.randomUUID(), userId, userName, action, module, entityId, details } });
+  await prisma.activityLog.create({ data: { id: crypto.randomUUID(), userId, userName, action, module, entityId, details } as any });
 }

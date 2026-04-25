@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
       id: crypto.randomUUID(),
       userId: session.user.id!, userName: session.user.name!, action: 'create', module: 'letters',
       entityId: letter.id, details: 'Courrier créé: ' + body.subject, aiInvolved: !!body.generateAI,
-    },
+    } as any,
   });
 
   return NextResponse.json(letter, { status: 201 });

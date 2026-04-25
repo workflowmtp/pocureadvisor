@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   });
 
   await prisma.activityLog.create({
-    data: { id: crypto.randomUUID(), userId: session.user.id!, userName: session.user.name!, action: 'create', module: 'negotiations', entityId: nego.id, details: 'Négociation créée: ' + body.subject },
+    data: { id: crypto.randomUUID(), userId: session.user.id!, userName: session.user.name!, action: 'create', module: 'negotiations', entityId: nego.id, details: 'Négociation créée: ' + body.subject } as any,
   });
 
   return NextResponse.json(nego, { status: 201 });

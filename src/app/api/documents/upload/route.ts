@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
         module: 'ocr',
         details: `Upload: ${file.name} - Tesseract: ${tesseractText ? 'OK (' + tesseractText.length + ' chars)' : 'N/A'}`,
         aiInvolved: !!tesseractText,
-      },
+      } as any,
     });
 
     // Trigger report generation asynchronously if folderId exists

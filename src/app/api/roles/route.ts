@@ -18,7 +18,7 @@ export async function GET() {
 
   const roles = await prisma.role.findMany({
     include: {
-      permissions: {
+      rolePermissions: {
         include: { permission: true },
       },
       _count: { select: { users: true } },
@@ -35,7 +35,7 @@ export async function GET() {
       isSystem: r.isSystem,
       isDefault: r.isDefault,
       userCount: r._count.users,
-      permissions: r.permissions.map(p => p.permission.code),
+      permissions: r.rolePermissions.map(p => p.permission.code),
     })),
   });
 }
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
       module: 'roles',
       entityId: role.id,
       details: `Création du rôle: ${role.name}`,
-    },
+    } as any,
   });
 
   return NextResponse.json({
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
       code: role.code,
       name: role.name,
       description: role.description,
-      permissions: role.permissions.map(p => p.permission.code),
+      permissions: role.rolePermissions.map(p => p.permission.code),
     },
   });
 }

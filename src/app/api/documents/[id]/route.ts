@@ -142,6 +142,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       break;
     }
 
+    case 'advance': {
+      const next = doc.pipelineStage <= 3 ? 4
+                 : doc.pipelineStage === 4 ? 5
+                 : doc.pipelineStage === 5 ? 6
+                 : 7;
+      await prisma.document.update({ where: { id }, data: { pipelineStage: next } });
+      await logActivity(session.user.id!, userName, 'update', 'documents', id, `Avancé étape wizard → ${next}`);
+      break;
+    }
+
     case 'comment': {
       const text = body.text || '';
       const comments = [...existingComments, { user: userName, date: new Date().toISOString(), text }];
@@ -157,6 +167,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json({ success: true });
 }
 
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  try {
+    const { id } = await params;
+    const doc = await prisma.document.findUnique({ where: { id }, select: { id: true, fileName: true, isDeleted: true } });
+    if (!doc || doc.isDeleted) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    await prisma.document.update({ where: { id }, data: { isDeleted: true, updatedAt: new Date() } });
+    await logActivity(session.user.id, session.user.name || '', 'document_delete', 'documents', id, `Suppression: ${doc.fileName}`);
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
 async function logActivity(userId: string, userName: string, action: string, module: string, entityId: string, details: string) {
-  await prisma.activityLog.create({ data: { id: crypto.randomUUID(), userId, userName, action, module, entityId, details } });
+  await prisma.activityLog.create({ data: { id: crypto.randomUUID(), userId, userName, action, module, entityId, details } as any });
 }

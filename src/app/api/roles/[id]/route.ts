@@ -101,7 +101,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       module: 'roles',
       entityId: role.id,
       details: `Modification du rôle: ${role.name}`,
-    },
+    } as any,
   });
 
   return NextResponse.json({ success: true, role });

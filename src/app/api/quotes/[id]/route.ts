@@ -10,8 +10,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const comp = await prisma.quoteComparison.findUnique({
     where: { id },
     include: {
-      lines: {
-        include: { supplier: { select: { id: true, name: true, code: true, scoreGlobal: true, certifications: true } } },
+      quoteLines: {
         orderBy: { tco: 'asc' },
       },
     },
@@ -20,7 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!comp || comp.isDeleted) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   // Compute best per criteria
-  const lines = comp.lines;
+  const lines = comp.quoteLines;
   const bestPrice = lines.length > 0 ? Math.min(...lines.map(l => l.unitPrice)) : 0;
   const bestTco = lines.length > 0 ? Math.min(...lines.map(l => l.tco)) : 0;
   const bestLead = lines.length > 0 ? Math.min(...lines.filter(l => l.leadTime > 0).map(l => l.leadTime)) : 0;
@@ -30,10 +29,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     comparison: comp,
     lines: lines.map(l => ({
       ...l,
-      supplierName: l.supplier?.name || l.supplierName,
-      supplierCode: l.supplier?.code || '—',
-      supplierScore: l.supplier?.scoreGlobal || l.score,
-      supplierCerts: l.supplier?.certifications || l.certifications,
+      supplierCode: l.supplierId ? '—' : '—',
+      supplierScore: l.score,
+      supplierCerts: l.certifications,
       isBestPrice: l.unitPrice === bestPrice,
       isBestTco: l.tco === bestTco,
       isBestLead: l.leadTime > 0 && l.leadTime === bestLead,
@@ -117,5 +115,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 async function log(userId: string, userName: string, action: string, module: string, entityId: string, details: string) {
-  await prisma.activityLog.create({ data: { id: crypto.randomUUID(), userId, userName, action, module, entityId, details } });
+  await prisma.activityLog.create({ data: { id: crypto.randomUUID(), userId, userName, action, module, entityId, details } as any });
 }

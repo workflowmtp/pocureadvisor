@@ -13,10 +13,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: 'Mot de passe', type: 'password' },
       },
       async authorize(credentials) {
-        console.log('[AUTH] Attempting login with:', credentials?.email);
-        
         if (!credentials?.email || !credentials?.password) {
-          console.log('[AUTH] Missing credentials');
           return null;
         }
 
@@ -26,7 +23,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             include: {
               role: {
                 include: {
-                  permissions: {
+                  rolePermissions: {
                     include: { permission: true },
                   },
                 },
@@ -34,19 +31,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             },
           });
 
-          console.log('[AUTH] User found:', user ? user.email : 'NOT FOUND');
-          console.log('[AUTH] User isActive:', user?.isActive);
-
-          if (!user || !user.isActive) {
-            console.log('[AUTH] User not found or inactive');
+          if (!user) {
+            console.warn('[AUTH] Aucun compte trouvé pour:', credentials.email);
+            return null;
+          }
+          if (!user.isActive) {
+            console.warn('[AUTH] Compte désactivé:', credentials.email);
             return null;
           }
 
           const isValid = await compare(credentials.password as string, user.passwordHash);
-          console.log('[AUTH] Password valid:', isValid);
-          
           if (!isValid) {
-            console.log('[AUTH] Invalid password');
+            console.warn('[AUTH] Mot de passe incorrect pour:', credentials.email);
             return null;
           }
 
@@ -59,18 +55,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           // Log de connexion (non bloquant)
           prisma.activityLog.create({
             data: {
+              id: crypto.randomUUID(),
               userId: user.id,
               userName: user.fullName,
               action: 'login',
               module: 'auth',
               details: `Connexion utilisateur: ${user.fullName}`,
-            },
+            } as any,
           }).catch(e => console.warn('[AUTH] activityLog failed:', e.message));
 
           // Extract permission codes
-          const permissions = user.role?.permissions.map(rp => rp.permission.code) || [];
-
-          console.log('[AUTH] Returning user object with id:', user.id);
+          const permissions = user.role?.rolePermissions.map((rp: any) => rp.permission.code) || [];
 
           return {
             id: user.id,
@@ -92,7 +87,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async jwt({ token, user }) {
-      console.log('[AUTH JWT] Callback - user:', user?.id);
       if (user) {
         token.id = user.id;
         token.roleId = (user as any).roleId;
@@ -102,11 +96,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.poleIds = (user as any).poleIds;
         token.permissions = (user as any).permissions;
       }
-      console.log('[AUTH JWT] Token id:', token.id);
       return token;
     },
     async session({ session, token }) {
-      console.log('[AUTH SESSION] Callback - token id:', token.id);
       if (session.user) {
         session.user.id = token.id as string;
         (session.user as any).roleId = token.roleId;
@@ -116,7 +108,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         (session.user as any).poleIds = token.poleIds;
         (session.user as any).permissions = token.permissions;
       }
-      console.log('[AUTH SESSION] Session user id:', session.user?.id);
       return session;
     },
   },
@@ -135,5 +126,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     },
   },
-  debug: true,
 });

@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
       module: 'users',
       entityId: user.id,
       details: `Création de l'utilisateur: ${user.fullName}`,
-    },
+    } as any,
   });
 
   return NextResponse.json({ success: true, user });
