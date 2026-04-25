@@ -10,12 +10,12 @@ export async function GET(req: NextRequest) {
   const priorities = req.nextUrl.searchParams.get('priorities');
 
   if (countOnly) {
-    const [unreadNotifs, openAnomalies, lateOrders, suppliersAtRisk] = await Promise.all([
+    const [unreadNotifs, openAnomalies, suppliersAtRisk] = await Promise.all([
       prisma.notification.count({ where: { isRead: false, OR: [{ userId: session.user.id }, { userId: null }] } }),
       prisma.anomaly.count({ where: { status: { in: ['open', 'investigating'] }, isDeleted: false } }),
-      prisma.order.count({ where: { isLate: true, status: { notIn: ['received', 'closed'] }, isDeleted: false } }),
       prisma.supplier.count({ where: { riskLevel: { in: ['critical', 'high'] }, isDeleted: false } }),
     ]);
+    const lateOrders = 0; // orders now from X3, not local DB
     return NextResponse.json({ unreadNotifs, openAnomalies, lateOrders, suppliersAtRisk });
   }
 
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   if (priorities) {
     const [anomalies, orders, suppliers, negotiations] = await Promise.all([
       prisma.anomaly.findMany({ where: { isDeleted: false, status: { in: ['open', 'investigating'] }, severity: 'critical' }, select: { id: true, title: true, financialImpact: true }, take: 5 }),
-      prisma.order.findMany({ where: { isDeleted: false, isLate: true, riskOfStockout: true, status: { notIn: ['received', 'closed'] } }, select: { id: true, poNumber: true, delayDays: true, totalAmount: true }, take: 5 }),
+      Promise.resolve([]), // orders now from X3, not local DB
       prisma.supplier.findMany({ where: { isDeleted: false, riskLevel: 'critical' }, select: { id: true, name: true, scoreGlobal: true }, take: 3 }),
       prisma.negotiation.findMany({ where: { isDeleted: false, status: 'pending_decision' }, select: { id: true, subject: true, financialStake: true }, take: 3 }),
     ]);

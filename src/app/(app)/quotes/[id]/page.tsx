@@ -16,17 +16,34 @@ export default function QuoteDetailPage() {
   const [selectModal, setSelectModal] = useState<any>(null);
   const [negoModal, setNegoModal] = useState<any>(null);
   const [form, setForm] = useState<Record<string, any>>({});
-  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [allSuppliers, setAllSuppliers] = useState<any[]>([]);
+  const [filteredSuppliers, setFilteredSuppliers] = useState<any[]>([]);
+  const [supplierQuery, setSupplierQuery] = useState('');
+
+  const loadAllSuppliers = async () => {
+    try {
+      let all: any[] = [];
+      let page = 1;
+      let hasMore = true;
+      while (hasMore) {
+        const res = await fetch(`/api/x3/suppliers?page=${page}&size=100`);
+        const json = await res.json();
+        const suppliers = json.suppliers || [];
+        all = [...all, ...suppliers];
+        hasMore = json.pagination?.hasMore && suppliers.length > 0;
+        page++;
+        if (page > 20) break;
+      }
+      setAllSuppliers(all);
+    } catch { /* silent */ }
+  };
 
   const fetchData = () => {
-    Promise.all([
-      fetch(`/api/quotes/${params.id}`).then(r => { if (!r.ok) throw new Error(); return r.json(); }),
-      fetch('/api/suppliers?limit=500').then(r => r.json()),
-    ]).then(([qData, sData]) => {
-      setData(qData); setSuppliers(sData.suppliers || []); setLoading(false);
-    }).catch(() => setLoading(false));
+    fetch(`/api/quotes/${params.id}`).then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .then(qData => { setData(qData); setLoading(false); })
+      .catch(() => setLoading(false));
   };
-  useEffect(() => { if (params.id) fetchData(); }, [params.id]);
+  useEffect(() => { if (params.id) { fetchData(); loadAllSuppliers(); } }, [params.id]);
 
   async function addLine() {
     await fetch(`/api/quotes/${params.id}`, {
@@ -197,14 +214,27 @@ export default function QuoteDetailPage() {
           <div className="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-xl w-full max-w-lg max-h-[90vh] overflow-auto p-6" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold mb-4">Ajouter une offre fournisseur</h3>
             <div className="grid grid-cols-2 gap-3 mb-3">
-              <div><label className="text-xs font-semibold text-[var(--text-secondary)] mb-1 block">Fournisseur *</label>
-                <select value={form.supplierId || ''} onChange={e => {
-                  const s = suppliers.find((s: any) => s.id === e.target.value);
-                  setForm({ ...form, supplierId: e.target.value, supplierName: s?.name || '', score: s?.scoreGlobal || 50 });
-                }} className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-lg text-sm">
-                  <option value="">— Sélectionner —</option>
-                  {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name} ({s.scoreGlobal}/100)</option>)}
-                </select></div>
+              <div className="relative"><label className="text-xs font-semibold text-[var(--text-secondary)] mb-1 block">Fournisseur *</label>
+                <input type="text" value={supplierQuery} onChange={e => {
+                  setSupplierQuery(e.target.value);
+                  const q = e.target.value.toLowerCase();
+                  if (q.length >= 1) {
+                    setFilteredSuppliers(allSuppliers.filter(s => s.name?.toLowerCase().includes(q) || s.code?.toLowerCase().includes(q)).slice(0, 15));
+                  } else { setFilteredSuppliers([]); }
+                }} placeholder="Rechercher fournisseur X3..."
+                  className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-lg text-sm" />
+                {filteredSuppliers.length > 0 && (
+                  <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                    {filteredSuppliers.map(s => (
+                      <div key={s.code} onClick={() => { setForm({ ...form, supplierId: null, supplierName: s.name, score: 50 }); setSupplierQuery(`${s.code} — ${s.name}`); setFilteredSuppliers([]); }}
+                        className="px-3 py-2 cursor-pointer hover:bg-[var(--bg-card-hover)] border-b border-[var(--border-secondary)] last:border-0">
+                        <div className="text-sm font-medium">{s.name}</div>
+                        <div className="text-[10px] text-[var(--text-tertiary)] font-mono">{s.code} · {s.country}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div><label className="text-xs font-semibold text-[var(--text-secondary)] mb-1 block">Score /100</label>
                 <input type="number" value={form.score || ''} onChange={e => setForm({ ...form, score: parseInt(e.target.value) })}
                   className="w-full px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-lg text-sm" /></div>

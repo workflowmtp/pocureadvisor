@@ -27,7 +27,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     prisma.anomaly.findMany({
       where: { supplierId: id, isDeleted: false },
       orderBy: { dateDetected: 'desc' },
-      include: { user: { select: { fullName: true } } },
       take: 20,
     }),
     prisma.invoice.findMany({
@@ -61,7 +60,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     total: anomalies.length,
     open: anomalies.filter(a => a.status === 'open' || a.status === 'investigating').length,
     criticals: anomalies.filter(a => a.severity === 'critical').length,
-    totalImpact: anomalies.reduce((s, a) => s + (a.financialImpact || 0), 0),
+    totalImpact: anomalies.reduce((s, a) => s + Number(a.financialImpact || 0), 0),
   };
 
   // Scoring data for radar chart

@@ -15,17 +15,18 @@ export async function GET() {
     return NextResponse.json(dashboardCache.data);
   }
 
-  // Use optimized queries with select instead of include
+  // Fetch all data from local DB in parallel
   const [
     supplierStats,
-    orderStats,
     anomalyStats,
     criticalAnomaliesData,
-    lateOrdersData,
     topSuppliers,
     topAnomalies,
-    volumeByPoleRaw,
     categoryVolumeRaw,
+    orders,
+    lateOrdersData,
+    poles,
+    suppliersMap,
   ] = await Promise.all([
     // Supplier aggregations
     prisma.supplier.aggregate({
@@ -33,35 +34,21 @@ export async function GET() {
       _count: { _all: true },
       _sum: { volumeYtd: true },
     }),
-    
-    // Order aggregations
-    prisma.order.aggregate({
-      where: { isDeleted: false },
-      _count: { _all: true },
-      _sum: { totalAmount: true },
-    }),
-    
+
     // Anomaly aggregations
     prisma.anomaly.aggregate({
       where: { isDeleted: false },
       _count: { _all: true },
       _sum: { financialImpact: true },
     }),
-    
+
     // Critical anomalies for alerts
     prisma.anomaly.findMany({
       where: { isDeleted: false, severity: 'critical', status: { not: 'resolved' } },
-      select: { id: true, title: true, financialImpact: true, supplier: { select: { name: true } } },
+      select: { id: true, title: true, financialImpact: true, supplierId: true },
       take: 5,
     }),
-    
-    // Late orders for alerts
-    prisma.order.findMany({
-      where: { isDeleted: false, isLate: true, status: { notIn: ['received', 'closed'] } },
-      select: { id: true, poNumber: true, delayDays: true, totalAmount: true, riskOfStockout: true, supplier: { select: { name: true } } },
-      take: 5,
-    }),
-    
+
     // Top 5 suppliers by volume
     prisma.supplier.findMany({
       where: { isDeleted: false },
@@ -69,45 +56,72 @@ export async function GET() {
       orderBy: { volumeYtd: 'desc' },
       take: 5,
     }),
-    
+
     // Top 5 anomalies by priority
     prisma.anomaly.findMany({
       where: { isDeleted: false, status: { not: 'resolved' } },
-      select: { id: true, title: true, category: true, severity: true, financialImpact: true, dateDetected: true, status: true, priority: true, supplier: { select: { name: true } } },
+      select: { id: true, title: true, category: true, severity: true, financialImpact: true, dateDetected: true, status: true, priority: true, supplierId: true },
       orderBy: { priority: 'asc' },
       take: 5,
     }),
-    
-    // Volume by pole using groupBy
-    prisma.order.groupBy({
-      by: ['poleId'],
-      where: { isDeleted: false },
-      _sum: { totalAmount: true },
-    }),
-    
+
     // Category distribution using groupBy
     prisma.supplier.groupBy({
       by: ['categoryId'],
       where: { isDeleted: false },
       _sum: { volumeYtd: true },
     }),
+
+    // All orders from DB
+    prisma.order.findMany({
+      where: { isDeleted: false },
+      include: { supplier: { select: { code: true, name: true } } },
+    }),
+
+    // Late orders for alerts
+    prisma.order.findMany({
+      where: { isDeleted: false, isLate: true },
+      include: { supplier: { select: { code: true, name: true } } },
+      take: 5,
+      orderBy: { delayDays: 'desc' },
+    }),
+
+    // Poles for volume chart
+    prisma.pole.findMany(),
+
+    // Supplier code -> name mapping
+    prisma.supplier.findMany({
+      where: { isDeleted: false },
+      select: { code: true, name: true },
+    }),
   ]);
 
-  // Get additional counts in parallel
+  // Build supplier code->name lookup
+  const supplierLookup: Record<string, string> = {};
+  suppliersMap.forEach(s => { supplierLookup[s.code] = s.name; });
+
+  // Order stats from local DB
+  const totalOrderAmount = orders.reduce((s, o) => s + Number(o.totalAmount || 0), 0);
+  const ruptureRiskCount = orders.filter(o => o.riskOfStockout).length;
+
+  // Volume by pole from local orders
+  const poleLookup: Record<string, string> = {};
+  poles.forEach(p => { poleLookup[p.id] = p.name; poleLookup[p.code] = p.name; });
+  const volumeByPole: Record<string, number> = {};
+  orders.forEach(o => {
+    const poleName = poleLookup[o.poleId] || o.poleId || 'Autre';
+    volumeByPole[poleName] = (volumeByPole[poleName] || 0) + Number(o.totalAmount || 0);
+  });
+
+  // Get additional counts
   const [
     activeSupplierCount,
     suppliersAtRiskCount,
-    pendingOrdersCount,
-    lateOrdersCount,
-    ruptureRiskCount,
     openAnomaliesCount,
     criticalAnomaliesCount,
   ] = await Promise.all([
     prisma.supplier.count({ where: { isDeleted: false, status: { notIn: ['blocked', 'suspended'] } } }),
     prisma.supplier.count({ where: { isDeleted: false, riskLevel: { in: ['critical', 'high'] } } }),
-    prisma.order.count({ where: { isDeleted: false, status: { notIn: ['received', 'closed'] } } }),
-    prisma.order.count({ where: { isDeleted: false, isLate: true, status: { notIn: ['received', 'closed'] } } }),
-    prisma.order.count({ where: { isDeleted: false, riskOfStockout: true, status: { notIn: ['received', 'closed'] } } }),
     prisma.anomaly.count({ where: { isDeleted: false, status: { in: ['open', 'investigating'] } } }),
     prisma.anomaly.count({ where: { isDeleted: false, severity: 'critical', status: { not: 'resolved' } } }),
   ]);
@@ -116,30 +130,30 @@ export async function GET() {
   const kpis = {
     activeSuppliers: activeSupplierCount,
     suppliersAtRisk: suppliersAtRiskCount,
-    pendingOrders: pendingOrdersCount,
-    lateOrders: lateOrdersCount,
+    pendingOrders: orders.length,
+    lateOrders: lateOrdersData.length,
     ruptureRisk: ruptureRiskCount,
     openAnomalies: openAnomaliesCount,
     criticalAnomalies: criticalAnomaliesCount,
-    totalVolumeYtd: supplierStats._sum.volumeYtd || 0,
-    totalFinancialImpact: anomalyStats._sum.financialImpact || 0,
-    volumeAchats: orderStats._sum.totalAmount || 0,
-    savingsRealized: Math.round((orderStats._sum.totalAmount || 0) * 0.08),
-    savingsPotential: Math.round((anomalyStats._sum.financialImpact || 0) * 0.6),
+    totalVolumeYtd: Number(supplierStats._sum.volumeYtd || 0),
+    totalFinancialImpact: Number(anomalyStats._sum.financialImpact || 0),
+    volumeAchats: totalOrderAmount,
+    savingsRealized: Math.round(totalOrderAmount * 0.08),
+    savingsPotential: Math.round(Number(anomalyStats._sum.financialImpact || 0) * 0.6),
     conformityRate: 87,
-    totalOrders: orderStats._count._all,
+    totalOrders: orders.length,
   };
 
   const alerts = {
     critical: criticalAnomaliesData.map(a => ({
       id: a.id,
       title: a.title,
-      supplier: a.supplier?.name || '—',
+      supplier: supplierLookup[a.supplierId || ''] || a.supplierId || '—',
       financialImpact: a.financialImpact,
       type: 'critical' as const,
     })),
     warning: lateOrdersData.map(o => ({
-      id: o.id,
+      id: o.poNumber || o.id,
       title: `${o.poNumber} — Retard +${o.delayDays}j`,
       supplier: o.supplier?.name || '—',
       amount: o.totalAmount,
@@ -149,15 +163,13 @@ export async function GET() {
     opportunity: [],
   };
 
-  // Map pole IDs to names
-  const poleNames: Record<string, string> = { OE: 'Opérations', HF: 'Hors FAB', OC: 'Occasionnel', BC: 'Bureau' };
   const charts = {
-    volumeByPole: volumeByPoleRaw.map(p => ({ pole: poleNames[p.poleId] || p.poleId, amount: p._sum.totalAmount || 0 })),
+    volumeByPole: Object.entries(volumeByPole).map(([pole, amount]) => ({ pole, amount })),
     categoryDistribution: categoryVolumeRaw
-      .filter(c => c._sum.volumeYtd && c._sum.volumeYtd > 0)
-      .sort((a, b) => (b._sum.volumeYtd || 0) - (a._sum.volumeYtd || 0))
+      .filter(c => c._sum.volumeYtd && Number(c._sum.volumeYtd) > 0)
+      .sort((a, b) => Number(b._sum.volumeYtd || 0) - Number(a._sum.volumeYtd || 0))
       .slice(0, 6)
-      .map(c => ({ name: c.categoryId || 'Autre', value: c._sum.volumeYtd || 0 })),
+      .map(c => ({ name: c.categoryId || 'Autre', value: Number(c._sum.volumeYtd || 0) })),
   };
 
   const data = {
@@ -170,7 +182,7 @@ export async function GET() {
     })),
     topAnomalies: topAnomalies.map(a => ({
       id: a.id, title: a.title, category: a.category, severity: a.severity,
-      supplier: a.supplier?.name || '—', impact: a.financialImpact,
+      supplier: supplierLookup[a.supplierId || ''] || a.supplierId || '—', impact: a.financialImpact,
       date: a.dateDetected, status: a.status, priority: a.priority,
     })),
   };

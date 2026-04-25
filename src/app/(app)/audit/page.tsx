@@ -295,7 +295,7 @@ export default function AuditPage() {
                 const sevConf = SEVERITY_CONFIG[rule.severity as keyof typeof SEVERITY_CONFIG] || SEVERITY_CONFIG.medium;
                 return (
                   <tr key={rule.id}>
-                    <td className="table-mono">{rule.id}</td>
+                    <td className="table-mono">{rule.code || rule.id}</td>
                     <td style={{ fontSize: 'var(--fs-sm)' }}>{rule.name}</td>
                     <td>{ANOMALY_CATEGORY_ICONS[rule.category] || ''} {rule.category}</td>
                     <td><span className={`badge ${sevConf.cls}`}>{sevConf.label}</span></td>

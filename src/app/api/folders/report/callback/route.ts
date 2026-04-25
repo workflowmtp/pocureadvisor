@@ -9,7 +9,10 @@ export async function POST(request: NextRequest) {
     const folderId = request.nextUrl.searchParams.get('folderId');
     const secret = request.nextUrl.searchParams.get('secret');
 
-    const expectedSecret = process.env.REPORT_CALLBACK_SECRET || 'procure-report-secret';
+    const expectedSecret = process.env.REPORT_CALLBACK_SECRET;
+    if (!expectedSecret) {
+      return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
+    }
 
     if (!folderId) {
       return NextResponse.json({ error: 'folderId requis' }, { status: 400 });

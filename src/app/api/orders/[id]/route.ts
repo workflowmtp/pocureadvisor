@@ -12,8 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     where: { id },
     include: {
       supplier: true,
-      lines: { include: { article: true } },
-      anomalies: { where: { isDeleted: false }, include: { user: { select: { fullName: true } } } },
+      orderLines: { include: { article: true } },
       invoices: { where: { isDeleted: false } },
     },
   });
@@ -21,6 +20,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!order || order.isDeleted) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   }
+
+  // Anomalies: orderId is a plain string (po_number), not a FK — query separately
+  const anomalies = await prisma.anomaly.findMany({
+    where: { orderId: order.poNumber, isDeleted: false },
+  });
 
   // Compute delay financial impact estimation
   const delayImpact = order.isLate && order.delayDays > 0
@@ -47,13 +51,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       supplierCode: order.supplier?.code || '—',
       supplierScore: order.supplier?.scoreGlobal || 0,
     },
-    lines: order.lines.map(l => ({
+    lines: order.orderLines.map(l => ({
       ...l,
       articleCode: l.article?.code || '—',
       articleDesignation: l.article?.designation || l.description,
       stockCoverage: l.article ? Math.floor(l.article.currentStock / (l.article.avgMonthlyConsumption / 30)) : null,
     })),
-    anomalies: order.anomalies,
+    anomalies,
     invoices: order.invoices,
     delayImpact,
     pipeline: { steps: pipelineSteps, currentStep: currentStepIdx },

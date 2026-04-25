@@ -68,8 +68,8 @@ export async function POST(req: NextRequest) {
   }
 
   // Hash password
-  const bcrypt = require('bcryptjs');
-  const passwordHash = await bcrypt.hash(password, 10);
+  const { hash } = await import('bcryptjs');
+  const passwordHash = await hash(password, 10);
 
   const user = await prisma.user.create({
     data: {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, FormEvent, Suspense } from 'react';
-import { signIn } from 'next-auth/react';
+import { signIn, getSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 function LoginForm() {
@@ -42,16 +42,19 @@ function LoginForm() {
       redirect: false,
     });
 
-    console.log('[LOGIN] SignIn result:', result);
-    setLoading(false);
+    console.log('[LOGIN] SignIn result:', JSON.stringify(result));
 
-    // Check ok FIRST — NextAuth v5 can return ok:true with a non-blocking error string
     if (result?.ok) {
-      console.log('[LOGIN] Success, redirecting to dashboard');
+      // Small delay to let the cookie be set, then redirect
+      await new Promise(r => setTimeout(r, 500));
       window.location.href = '/dashboard';
     } else {
-      console.log('[LOGIN] Login failed:', result?.error);
-      setError('Adresse e-mail ou mot de passe incorrect');
+      setLoading(false);
+      const errorMessages: Record<string, string> = {
+        'CredentialsSignin': 'Adresse e-mail ou mot de passe incorrect',
+        'SessionRequired': 'Session requise',
+      };
+      setError(errorMessages[result?.error || ''] || 'Erreur de connexion. Réessayez.');
     }
   }
 
@@ -132,15 +135,17 @@ function LoginForm() {
           </button>
         </form>
 
-        {/* Demo accounts */}
-        <div className="login-demo-hint mt-6 pt-5 border-t border-[var(--border-primary)]">
-          <p className="text-[var(--fs-xs)] text-[var(--text-tertiary)] text-center uppercase tracking-[1.5px] mb-3">Comptes de démonstration</p>
-          <div className="demo-accounts flex flex-wrap gap-1 justify-center">
-            <button type="button" onClick={() => { setEmail('admin@multiprint.cm'); setPassword('demo2025'); }} className="demo-chip px-3 py-1 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-full text-[var(--fs-xs)] text-[var(--text-secondary)] font-mono cursor-pointer hover:border-[var(--accent-blue)] hover:text-[var(--accent-blue)] transition-all">admin@multiprint.cm</button>
-            <button type="button" onClick={() => { setEmail('d.moukoko@multiprint.cm'); setPassword('demo2025'); }} className="demo-chip px-3 py-1 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-full text-[var(--fs-xs)] text-[var(--text-secondary)] font-mono cursor-pointer hover:border-[var(--accent-blue)] hover:text-[var(--accent-blue)] transition-all">d.moukoko@multiprint.cm</button>
-            <button type="button" onClick={() => { setEmail('c.fotso@multiprint.cm'); setPassword('demo2025'); }} className="demo-chip px-3 py-1 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-full text-[var(--fs-xs)] text-[var(--text-secondary)] font-mono cursor-pointer hover:border-[var(--accent-blue)] hover:text-[var(--accent-blue)] transition-all">c.fotso@multiprint.cm</button>
+        {/* Demo accounts — hidden in production */}
+        {process.env.NODE_ENV !== 'production' && (
+          <div className="login-demo-hint mt-6 pt-5 border-t border-[var(--border-primary)]">
+            <p className="text-[var(--fs-xs)] text-[var(--text-tertiary)] text-center uppercase tracking-[1.5px] mb-3">Comptes de démonstration</p>
+            <div className="demo-accounts flex flex-wrap gap-1 justify-center">
+              <button type="button" onClick={() => { setEmail('admin@multiprint.cm'); setPassword('demo2025'); }} className="demo-chip px-3 py-1 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-full text-[var(--fs-xs)] text-[var(--text-secondary)] font-mono cursor-pointer hover:border-[var(--accent-blue)] hover:text-[var(--accent-blue)] transition-all">admin@multiprint.cm</button>
+              <button type="button" onClick={() => { setEmail('d.moukoko@multiprint.cm'); setPassword('demo2025'); }} className="demo-chip px-3 py-1 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-full text-[var(--fs-xs)] text-[var(--text-secondary)] font-mono cursor-pointer hover:border-[var(--accent-blue)] hover:text-[var(--accent-blue)] transition-all">d.moukoko@multiprint.cm</button>
+              <button type="button" onClick={() => { setEmail('c.fotso@multiprint.cm'); setPassword('demo2025'); }} className="demo-chip px-3 py-1 bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-full text-[var(--fs-xs)] text-[var(--text-secondary)] font-mono cursor-pointer hover:border-[var(--accent-blue)] hover:text-[var(--accent-blue)] transition-all">c.fotso@multiprint.cm</button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Registration link */}
         <div className="mt-6 text-center">

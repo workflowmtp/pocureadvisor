@@ -122,7 +122,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         httpOnly: true,
         sameSite: 'lax',
         path: '/',
-        secure: false, // false for localhost
+        secure: process.env.NODE_ENV === 'production',
       },
     },
   },

@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-1.0.x"]
 }
 
 datasource db {
@@ -8,7 +9,7 @@ datasource db {
 }
 
 model ActivityLog {
-  id         String   @id
+  id         String   @id @default(cuid())
   userId     String?
   userName   String?
   action     String
@@ -21,7 +22,7 @@ model ActivityLog {
 }
 
 model AlternativeSupplier {
-  id              String            @id
+  id              String            @id @default(cuid())
   categoryId      String
   name            String
   country         String
@@ -37,40 +38,42 @@ model AlternativeSupplier {
   lastContactDate DateTime?
   isDeleted       Boolean           @default(false)
   createdAt       DateTime          @default(now())
-  updatedAt       DateTime
+  updatedAt       DateTime          @updatedAt
 }
 
 model Anomaly {
-  id                              String        @id
-  category                        String
-  subCategory                     String?
-  severity                        Severity
-  priority                        Int           @default(3)
-  title                           String
-  description                     String?
-  detectionMethod                 String?
-  ruleId                          String?
-  supplierId                      String?
-  userId                          String?
-  poleId                          String?
-  orderId                         String?
-  financialImpact                 Float?
-  dateDetected                    DateTime
-  dateResolved                    DateTime?
-  status                          AnomalyStatus @default(open)
-  resolutionNotes                 String?
-  resolvedById                    String?
-  isDeleted                       Boolean       @default(false)
-  createdAt                       DateTime      @default(now())
-  updatedAt                       DateTime
-  order      Order?    @relation(fields: [orderId], references: [id])
-  resolvedBy User?     @relation("Anomaly_resolvedByIdToUser", fields: [resolvedById], references: [id])
-  supplier   Supplier? @relation(fields: [supplierId], references: [id])
-  user       User?     @relation("Anomaly_userIdToUser", fields: [userId], references: [id])
+  id            String   @id @default(cuid())
+  category      String
+  subCategory   String?
+  severity      Severity
+  priority      Int?
+  title         String
+  description   String?
+
+  detectionMethod String?
+  ruleId        String?
+
+  supplierId    String?   // Code Sage bpsnum, pas de FK
+  orderId       String?   // po_number Sage, pas de FK
+  userId        String?   // créé par quel user (optionnel)
+  poleId        String?
+  resolvedById  String?
+
+  financialImpact Decimal?
+
+  dateDetected  DateTime @default(now())
+  dateResolved  DateTime?
+
+  status        AnomalyStatus @default(open)
+  resolutionNotes String?
+
+  isDeleted     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model Article {
-  id                    String        @id
+  id                    String        @id @default(cuid())
   code                  String        @unique
   designation           String
   familyId              String
@@ -84,12 +87,12 @@ model Article {
   x3Id                  String?
   isDeleted             Boolean       @default(false)
   createdAt             DateTime      @default(now())
-  updatedAt             DateTime
+  updatedAt             DateTime      @updatedAt
   orderLines OrderLine[]
 }
 
 model AuditRule {
-  id       String   @id
+  id       String   @id @default(cuid())
   code     String   @unique
   name     String
   category String
@@ -98,7 +101,7 @@ model AuditRule {
 }
 
 model Document {
-  id                               String               @id
+  id                               String               @id @default(cuid())
   fileName                         String
   fileSize                         String?
   fileType                         String               @default("invoice")
@@ -120,7 +123,7 @@ model Document {
   comments                         Json?
   isDeleted                        Boolean              @default(false)
   createdAt                        DateTime             @default(now())
-  updatedAt                        DateTime
+  updatedAt                        DateTime             @updatedAt
   ocrRawText                       String?
   folderId                         String?
   ocrFullText                      String?
@@ -133,7 +136,7 @@ model Document {
 }
 
 model Folder {
-  id           String     @id
+  id           String     @id @default(cuid())
   name         String
   description  String?
   color        String?    @default("#3B82F6")
@@ -142,7 +145,7 @@ model Folder {
   createdById  String
   isDeleted    Boolean    @default(false)
   createdAt    DateTime   @default(now())
-  updatedAt    DateTime
+  updatedAt    DateTime   @updatedAt
   report       Json?
   reportReady  Boolean    @default(false)
   reportStatus String     @default("idle")
@@ -156,7 +159,7 @@ model Folder {
 }
 
 model Invoice {
-  id                 String        @id
+  id                 String        @id @default(cuid())
   invoiceNumber      String        @unique
   supplierId         String
   dateInvoice        DateTime
@@ -171,13 +174,13 @@ model Invoice {
   isDuplicateSuspect Boolean       @default(false)
   isDeleted          Boolean       @default(false)
   createdAt          DateTime      @default(now())
-  updatedAt          DateTime
+  updatedAt          DateTime      @updatedAt
   order    Order?   @relation(fields: [orderId], references: [id])
   supplier Supplier @relation(fields: [supplierId], references: [id])
 }
 
 model Letter {
-  id          String       @id
+  id          String       @id @default(cuid())
   type        LetterType
   supplierId  String?
   subject     String
@@ -188,13 +191,13 @@ model Letter {
   createdById String
   isDeleted   Boolean      @default(false)
   createdAt   DateTime     @default(now())
-  updatedAt   DateTime
+  updatedAt   DateTime     @updatedAt
   createdBy User      @relation(fields: [createdById], references: [id])
   supplier  Supplier? @relation(fields: [supplierId], references: [id])
 }
 
 model Negotiation {
-  id              String            @id
+  id              String            @id @default(cuid())
   supplierId      String?
   subject         String
   category        String?
@@ -209,12 +212,12 @@ model Negotiation {
   rounds          Json?
   isDeleted       Boolean           @default(false)
   createdAt       DateTime          @default(now())
-  updatedAt       DateTime
+  updatedAt       DateTime          @updatedAt
   supplier Supplier? @relation(fields: [supplierId], references: [id])
 }
 
 model Notification {
-  id                String    @id
+  id                String    @id @default(cuid())
   userId            String?
   title             String
   message           String
@@ -228,7 +231,7 @@ model Notification {
 }
 
 model Order {
-  id             String       @id
+  id             String       @id @default(cuid())
   poNumber       String       @unique
   supplierId     String
   poleId         String
@@ -245,15 +248,14 @@ model Order {
   x3SyncStatus   X3SyncStatus @default(synced)
   isDeleted      Boolean      @default(false)
   createdAt      DateTime     @default(now())
-  updatedAt      DateTime
-  anomalies  Anomaly[]
+  updatedAt      DateTime     @updatedAt
   invoices   Invoice[]
   supplier   Supplier   @relation(fields: [supplierId], references: [id])
   orderLines OrderLine[]
 }
 
 model OrderLine {
-  id          String   @id
+  id          String   @id @default(cuid())
   orderId     String
   articleId   String?
   description String
@@ -266,19 +268,19 @@ model OrderLine {
 }
 
 model Permission {
-  id             String           @id
+  id             String           @id @default(cuid())
   code           String           @unique
   name           String
   description    String?
   category       String
   isSystem       Boolean          @default(false)
   createdAt      DateTime         @default(now())
-  updatedAt      DateTime
+  updatedAt      DateTime         @updatedAt
   rolePermissions RolePermission[]
 }
 
 model Pole {
-  id        String  @id
+  id        String  @id @default(cuid())
   code      String  @unique
   name      String
   color     String
@@ -286,7 +288,7 @@ model Pole {
 }
 
 model PurchaseCategory {
-  id       String     @id
+  id       String     @id @default(cuid())
   code     String     @unique
   name     String     @unique
   families String[]
@@ -294,19 +296,19 @@ model PurchaseCategory {
 }
 
 model QuoteComparison {
-  id          String      @id
+  id          String      @id @default(cuid())
   subject     String
   dateCreated DateTime    @default(now())
   createdById String?
   status      String      @default("active")
   isDeleted   Boolean     @default(false)
   createdAt   DateTime    @default(now())
-  updatedAt   DateTime
+  updatedAt   DateTime    @updatedAt
   quoteLines QuoteLine[]
 }
 
 model QuoteLine {
-  id              String          @id
+  id              String          @id @default(cuid())
   comparisonId    String
   supplierId      String?
   supplierName    String
@@ -326,7 +328,7 @@ model QuoteLine {
 }
 
 model RawMaterial {
-  id            String    @id
+  id            String    @id @default(cuid())
   name          String
   category      String
   unit          String
@@ -339,18 +341,18 @@ model RawMaterial {
   alertType     AlertType @default(neutral)
   isDeleted     Boolean   @default(false)
   createdAt     DateTime  @default(now())
-  updatedAt     DateTime
+  updatedAt     DateTime  @updatedAt
 }
 
 model Role {
-  id             String           @id
+  id             String           @id @default(cuid())
   code           String           @unique
   name           String
   description    String?
   isSystem       Boolean          @default(false)
   isDefault      Boolean          @default(false)
   createdAt      DateTime         @default(now())
-  updatedAt      DateTime
+  updatedAt      DateTime         @updatedAt
   rolePermissions RolePermission[]
   users           User[]
 }
@@ -366,13 +368,13 @@ model RolePermission {
 }
 
 model Setting {
-  id    String @id
+  id    String @id @default(cuid())
   key   String @unique
   value Json
 }
 
 model Supplier {
-  id               String           @id
+  id               String           @id @default(cuid())
   code             String           @unique
   name             String
   country          String
@@ -406,8 +408,7 @@ model Supplier {
   x3SyncStatus     X3SyncStatus     @default(synced)
   isDeleted        Boolean          @default(false)
   createdAt        DateTime         @default(now())
-  updatedAt        DateTime
-  anomalies    Anomaly[]
+  updatedAt        DateTime          @updatedAt
   documents    Document[]
   invoices     Invoice[]
   letters      Letter[]
@@ -418,7 +419,7 @@ model Supplier {
 }
 
 model User {
-  id                                   String         @id
+  id                                   String         @id @default(cuid())
   username                             String         @unique
   passwordHash                         String
   fullName                             String
@@ -429,11 +430,9 @@ model User {
   loginCount                           Int            @default(0)
   lastLoginAt                          DateTime?
   createdAt                            DateTime       @default(now())
-  updatedAt                            DateTime
+  updatedAt                            DateTime       @updatedAt
   roleId                               String?
   activityLogs      ActivityLog[]
-  resolvedAnomalies Anomaly[]      @relation("Anomaly_resolvedByIdToUser")
-  anomalies         Anomaly[]      @relation("Anomaly_userIdToUser")
   assignedDocuments Document[]     @relation("Document_assignedToIdToUser")
   uploadedDocuments Document[]     @relation("Document_uploadedByIdToUser")
   folders           Folder[]

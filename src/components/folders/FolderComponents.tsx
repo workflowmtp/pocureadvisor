@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
-import { UploadZone } from '@/components/ocr/OcrComponents';
+import { DrivePickerZone } from '@/components/ocr/OcrComponents';
 
 interface Folder {
   id: string;
@@ -37,6 +37,7 @@ export function FolderList({ onFolderSelect }: { onFolderSelect?: (folderId: str
   const [folders, setFolders] = useState<Folder[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     loadFolders();
@@ -53,6 +54,16 @@ export function FolderList({ onFolderSelect }: { onFolderSelect?: (folderId: str
       console.error('Load folders error:', e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteFolder = async (id: string) => {
+    try {
+      await fetch(`/api/folders?id=${id}`, { method: 'DELETE' });
+      setConfirmDelete(null);
+      loadFolders();
+    } catch (e) {
+      console.error('Delete folder error:', e);
     }
   };
 
@@ -107,7 +118,6 @@ export function FolderList({ onFolderSelect }: { onFolderSelect?: (folderId: str
           {folders.map((folder) => (
             <div
               key={folder.id}
-              onClick={() => onFolderSelect?.(folder.id)}
               style={{
                 background: 'var(--bg-card)',
                 border: '1px solid var(--border-primary)',
@@ -115,6 +125,7 @@ export function FolderList({ onFolderSelect }: { onFolderSelect?: (folderId: str
                 padding: '16px',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
+                position: 'relative',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = folder.color;
@@ -125,29 +136,39 @@ export function FolderList({ onFolderSelect }: { onFolderSelect?: (folderId: str
                 e.currentTarget.style.transform = 'translateY(0)';
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                <div style={{
-                  width: '40px',
-                  height: '40px',
-                  background: folder.color + '20',
-                  borderRadius: '10px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '20px',
-                }}>
-                  {folder.icon === 'folder' ? 'D' : folder.icon}
+              {/* Bouton supprimer */}
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirmDelete({ id: folder.id, name: folder.name }); }}
+                title="Supprimer le dossier"
+                style={{
+                  position: 'absolute', top: '10px', right: '10px',
+                  width: '26px', height: '26px',
+                  background: 'rgba(239,68,68,0.1)', color: '#EF4444',
+                  border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px',
+                  cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >✕</button>
+
+              <div onClick={() => onFolderSelect?.(folder.id)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <div style={{
+                    width: '40px', height: '40px',
+                    background: folder.color + '20', borderRadius: '10px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px',
+                  }}>
+                    {folder.icon === 'folder' ? '📁' : folder.icon}
+                  </div>
+                  <div style={{ flex: 1, paddingRight: '20px' }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{folder.name}</div>
+                    {folder.description && (
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{folder.description}</div>
+                    )}
+                  </div>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{folder.name}</div>
-                  {folder.description && (
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{folder.description}</div>
-                  )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  <span>{folder._count?.documents || 0} documents</span>
+                  <span>{new Date(folder.createdAt).toLocaleDateString('fr-FR')}</span>
                 </div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                <span>{folder._count?.documents || 0} documents</span>
-                <span>{new Date(folder.createdAt).toLocaleDateString('fr-FR')}</span>
               </div>
             </div>
           ))}
@@ -158,6 +179,14 @@ export function FolderList({ onFolderSelect }: { onFolderSelect?: (folderId: str
         <CreateFolderModal
           onClose={() => setShowCreateModal(false)}
           onCreate={handleCreateFolder}
+        />
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          message={`Supprimer le dossier "${confirmDelete.name}" ? Cette action est irréversible.`}
+          onConfirm={() => handleDeleteFolder(confirmDelete.id)}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
     </div>
@@ -300,6 +329,7 @@ export function FolderDocuments({ folderId, onBack, onDocumentSelect, onUploadCo
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [confirmDeleteDoc, setConfirmDeleteDoc] = useState<{ id: string; name: string } | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -311,6 +341,16 @@ export function FolderDocuments({ folderId, onBack, onDocumentSelect, onUploadCo
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [chatMessages]);
+
+  const handleDeleteDocument = async (docId: string) => {
+    try {
+      await fetch(`/api/documents/${docId}`, { method: 'DELETE' });
+      setConfirmDeleteDoc(null);
+      loadFolder();
+    } catch (e) {
+      console.error('Delete document error:', e);
+    }
+  };
 
   const loadFolder = async () => {
     try {
@@ -497,21 +537,28 @@ Question de l'utilisateur: ${text}`,
                       <span>{new Date(doc.createdAt).toLocaleDateString('fr-FR')}</span>
                     </div>
                   </div>
-                  <div style={{
-                    padding: '5px 12px',
-                    borderRadius: '20px',
-                    fontSize: '12px',
-                    fontWeight: 500,
-                    background: doc.ocrStatus === 'extracted' ? 'rgba(34, 197, 94, 0.15)' :
-                               doc.ocrStatus === 'partial' ? 'rgba(245, 158, 11, 0.15)' :
-                               'var(--bg-tertiary)',
-                    color: doc.ocrStatus === 'extracted' ? '#22C55E' :
-                           doc.ocrStatus === 'partial' ? '#F59E0B' :
-                           'var(--text-secondary)',
-                  }}>
-                    {doc.ocrStatus === 'extracted' ? 'OCR OK' :
-                     doc.ocrStatus === 'partial' ? 'OCR partiel' :
-                     doc.ocrStatus === 'pending' ? 'En attente' : doc.ocrStatus}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{
+                      padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 500,
+                      background: doc.ocrStatus === 'extracted' ? 'rgba(34, 197, 94, 0.15)' :
+                                 doc.ocrStatus === 'partial' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-tertiary)',
+                      color: doc.ocrStatus === 'extracted' ? '#22C55E' :
+                             doc.ocrStatus === 'partial' ? '#F59E0B' : 'var(--text-secondary)',
+                    }}>
+                      {doc.ocrStatus === 'extracted' ? 'OCR OK' :
+                       doc.ocrStatus === 'partial' ? 'OCR partiel' :
+                       doc.ocrStatus === 'pending' ? 'En attente' : doc.ocrStatus}
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteDoc({ id: doc.id, name: doc.fileName }); }}
+                      title="Supprimer"
+                      style={{
+                        width: '28px', height: '28px',
+                        background: 'rgba(239,68,68,0.1)', color: '#EF4444',
+                        border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px',
+                        cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      }}
+                    >✕</button>
                   </div>
                 </div>
               ))}
@@ -607,11 +654,7 @@ Question de l'utilisateur: ${text}`,
                   {msg.role === 'assistant' ? (
                     <div
                       dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(msg.content) }}
-                      style={{
-                        '& p': { marginBottom: '8px' },
-                        '& ul, & ol': { marginLeft: '20px', marginBottom: '8px' },
-                        '& li': { marginBottom: '4px' },
-                      }}
+                      className="ocr-chat-html"
                     />
                   ) : (
                     msg.content
@@ -685,15 +728,56 @@ Question de l'utilisateur: ${text}`,
       {/* Upload section */}
       <div style={{ marginTop: '24px' }}>
         <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px', color: 'var(--text-primary)' }}>
-          Ajouter des documents
+          Lier un fichier depuis Drive
         </h3>
-        <UploadZone
+        <DrivePickerZone
           folderId={folderId}
           onUploadComplete={(result) => {
             loadFolder();
             onUploadComplete?.(result);
           }}
         />
+      </div>
+
+      {confirmDeleteDoc && (
+        <ConfirmModal
+          message={`Supprimer "${confirmDeleteDoc.name}" ? Cette action est irréversible.`}
+          onConfirm={() => handleDeleteDocument(confirmDeleteDoc.id)}
+          onCancel={() => setConfirmDeleteDoc(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ConfirmModal({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000,
+    }}>
+      <div style={{
+        background: 'var(--bg-card)', borderRadius: '14px', padding: '28px',
+        width: '380px', maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+      }}>
+        <div style={{ fontSize: '20px', marginBottom: '12px' }}>⚠️</div>
+        <p style={{ fontSize: '15px', color: 'var(--text-primary)', marginBottom: '24px', lineHeight: 1.5 }}>{message}</p>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            style={{
+              padding: '9px 20px', border: '1px solid var(--border-primary)', borderRadius: '8px',
+              background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '14px',
+            }}
+          >Annuler</button>
+          <button
+            onClick={onConfirm}
+            style={{
+              padding: '9px 20px', border: 'none', borderRadius: '8px',
+              background: '#EF4444', color: 'white', cursor: 'pointer', fontSize: '14px', fontWeight: 600,
+            }}
+          >Supprimer</button>
+        </div>
       </div>
     </div>
   );

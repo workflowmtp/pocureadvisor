@@ -1,18 +1,15 @@
 'use client';
 
-import React, { useState, useRef, Fragment, useEffect } from 'react';
+import React, { useState, Fragment } from 'react';
 import { formatDate, formatCurrency } from '@/lib/format';
-import Tesseract from 'tesseract.js';
 
-// ─── Pipeline OCR avec 7 étapes comme l'original ───
+// ─── Pipeline OCR avec 5 étapes (Import Drive remplace Réception+Scan+OCR) ───
 const PIPELINE_STAGES = [
-  { id: 1, label: 'Réception', icon: '📥' },
-  { id: 2, label: 'Scan/Upload', icon: '📷' },
-  { id: 3, label: 'OCR Extraction', icon: '🔍' },
-  { id: 4, label: 'Rapproch. X3', icon: '🔗' },
-  { id: 5, label: 'Vérif. contrat', icon: '📑' },
-  { id: 6, label: 'Conformité', icon: '✅' },
-  { id: 7, label: 'Archivé', icon: '📁' }
+  { id: 1, label: 'Import Drive', icon: '☁️' },
+  { id: 2, label: 'Rapproch. X3', icon: '🔗' },
+  { id: 3, label: 'Vérif. contrat', icon: '📑' },
+  { id: 4, label: 'Conformité', icon: '✅' },
+  { id: 5, label: 'Archivé', icon: '📁' },
 ];
 
 interface PipelineStage {
@@ -27,12 +24,19 @@ interface OcrPipelineProps {
 }
 
 export function OcrPipeline({ currentStage, stageCounts = {} }: OcrPipelineProps) {
+  const remapped: Record<number, number> = {};
+  for (const [k, v] of Object.entries(stageCounts)) {
+    const old = parseInt(k);
+    const neo = old <= 3 ? 1 : old - 2;
+    remapped[neo] = (remapped[neo] || 0) + v;
+  }
+
   return (
     <div className="ocr-pipeline-container">
       <div className="ocr-pipeline-title">Pipeline de traitement documentaire</div>
       <div className="ocr-pipeline">
         {PIPELINE_STAGES.map((stage, i) => {
-          const count = stageCounts[stage.id] || 0;
+          const count = remapped[stage.id] || 0;
           const stageClass = count > 0 ? 'active' : 'pending';
           
           return (
@@ -60,657 +64,518 @@ export function OcrPipeline({ currentStage, stageCounts = {} }: OcrPipelineProps
   );
 }
 
-// ───// Upload Zone améliorée avec prévisualisation
-interface UploadZoneProps {
+// ─── Drive Picker Zone ───
+interface DbFolder {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  _count?: { documents: number };
+}
+
+interface DrivePickerZoneProps {
   onUpload?: () => void;
   onUploadComplete?: (result: any) => void;
   fileType?: string;
   folderId?: string | null;
 }
 
-interface PreviewData {
-  file: { name: string; size: string; type: string; mimeType: string };
-  tesseract: { text: string; fullLength: number; confidence: number } | null;
+interface DriveFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  modifiedTime?: string;
+  size?: string;
 }
 
-interface InconsistencyResult {
-  issues: boolean;
-  values: string[] | null;
-}
+const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
 
-export function UploadZone({ onUpload, onUploadComplete, fileType = 'invoice', folderId }: UploadZoneProps) {
-  const [isDragging, setIsDragging] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadStatus, setUploadStatus] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
-  const [previewData, setPreviewData] = useState<PreviewData | null>(null);
-  const [editedData, setEditedData] = useState<any>(null);
-  const [inconsistencies, setInconsistencies] = useState<InconsistencyResult | null>(null);
-  const [checkingInconsistencies, setCheckingInconsistencies] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const pendingFileRef = useRef<{ file: File; tesseractText: string } | null>(null);
+const DRIVE_ICONS: Record<string, string> = {
+  [DRIVE_FOLDER_MIME]: '📁',
+  'application/pdf': '📄',
+  'application/vnd.google-apps.document': '📝',
+  'application/vnd.google-apps.spreadsheet': '📊',
+  'application/vnd.google-apps.presentation': '📊',
+  'image/jpeg': '🖼️',
+  'image/png': '🖼️',
+  'image/gif': '🖼️',
+  'image/webp': '🖼️',
+};
 
-  // Auto-check inconsistencies when preview modal opens with a folder
-  useEffect(() => {
-    if (previewData && folderId && !checkingInconsistencies && !inconsistencies) {
-      checkInconsistencies();
-    }
-  }, [previewData, folderId]);
+const DRIVE_DOC_TYPES = [
+  { value: 'invoice', label: 'Facture' },
+  { value: 'bl', label: 'Bon de livraison' },
+  { value: 'quote', label: 'Devis' },
+  { value: 'po', label: 'Bon de commande' },
+  { value: 'contract', label: 'Contrat' },
+  { value: 'certificate', label: 'Certificat' },
+  { value: 'quality_doc', label: 'Doc. qualité' },
+  { value: 'other', label: 'Autre' },
+];
 
-  // Preprocess image for better OCR results
-  const preprocessImage = async (file: File): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        // Create canvas
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(file);
-          return;
-        }
+export function DrivePickerZone({
+  onUpload,
+  onUploadComplete,
+  fileType: initialFileType = 'invoice',
+  folderId,
+}: DrivePickerZoneProps) {
+  const [mode, setMode] = useState<'idle' | 'open' | 'success'>('idle');
+  const [files, setFiles] = useState<DriveFile[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [navStack, setNavStack] = useState<{ id: string | null; name: string }[]>([
+    { id: null, name: 'Mon Drive' },
+  ]);
+  const [selectedFile, setSelectedFile] = useState<DriveFile | null>(null);
+  const [selectedFileType, setSelectedFileType] = useState(initialFileType);
+  const [linking, setLinking] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [linkedFileName, setLinkedFileName] = useState('');
+  const [dbFolders, setDbFolders] = useState<DbFolder[]>([]);
+  const [targetFolderId, setTargetFolderId] = useState<string>(folderId || '');
 
-        // Scale up for better OCR (max 2000px width)
-        const scale = Math.min(2000 / img.width, 1);
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
+  const currentFolder = navStack[navStack.length - 1];
 
-        // Draw original image
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        // Get image data for processing
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-
-        // Step 1: Convert to grayscale and increase contrast
-        for (let i = 0; i < data.length; i += 4) {
-          // Grayscale
-          let gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-          
-          // Increase contrast (normalize)
-          gray = ((gray - 128) * 1.5) + 128;
-          gray = Math.max(0, Math.min(255, gray));
-          
-          data[i] = gray;
-          data[i + 1] = gray;
-          data[i + 2] = gray;
-        }
-
-        // Step 2: Adaptive binarization (threshold)
-        const threshold = 140;
-        for (let i = 0; i < data.length; i += 4) {
-          const val = data[i] > threshold ? 255 : 0;
-          data[i] = val;
-          data[i + 1] = val;
-          data[i + 2] = val;
-        }
-
-        // Put processed image back
-        ctx.putImageData(imageData, 0, 0);
-
-        // Convert to blob
-        canvas.toBlob((blob) => {
-          if (blob) {
-            console.log('[Preprocess] Image preprocessed:', file.size, '->', blob.size);
-            resolve(blob);
-          } else {
-            resolve(file);
-          }
-        }, 'image/png', 1.0);
-      };
-      img.onerror = () => resolve(file);
-      img.src = URL.createObjectURL(file);
-    });
-  };
-
-  const processFile = async (file: File) => {
-    console.log('[UploadZone] Processing file:', file.name, file.type, file.size);
-
-    const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (!validTypes.includes(file.type) && !file.name.match(/\.(pdf|jpg|jpeg|png|gif|webp)$/i)) {
-      setError('Format non supporté. Utilisez PDF, JPG, PNG, GIF ou WebP.');
-      return;
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      setError('Fichier trop volumineux. Maximum 10 MB.');
-      return;
-    }
-
-    setError(null);
-    setIsUploading(true);
-    setUploadProgress(0);
-    setPreviewData(null);
-
-    // Step 1: Run Tesseract OCR on client-side for images
-    let tesseractText = '';
-    const isImage = file.type.startsWith('image/');
-    
-    if (isImage) {
-      try {
-        setUploadStatus('Préprocessing de l\'image...');
-        console.log('[UploadZone] Preprocessing image...');
-        
-        // Preprocess image
-        const processedBlob = await preprocessImage(file);
-        const processedFile = new File([processedBlob], file.name, { type: 'image/png' });
-        
-        setUploadStatus('OCR Tesseract en cours...');
-        setUploadProgress(10);
-        console.log('[UploadZone] Starting Tesseract OCR...');
-        
-        const result = await Tesseract.recognize(processedFile, 'fra+eng', {
-          logger: (m) => {
-            if (m.status === 'recognizing text') {
-              const progress = 10 + Math.round(m.progress * 40); // 10-50%
-              setUploadProgress(progress);
-              console.log('[UploadZone] Tesseract progress:', progress + '%');
-            }
-          },
-        });
-        
-        tesseractText = result.data.text;
-        console.log('[UploadZone] Tesseract done. Text length:', tesseractText.length, 'Confidence:', result.data.confidence);
-        setUploadStatus('Envoi au serveur...');
-      } catch (tessErr: any) {
-        console.error('[UploadZone] Tesseract error:', tessErr.message);
-        setUploadStatus('Envoi au serveur...');
-      }
-    }
-
-    // Step 2: Send to server for preview (preview=true)
+  const fetchFiles = async (driveFolderId?: string | null, query?: string) => {
+    setLoadingFiles(true);
+    setFilesError(null);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('fileType', fileType);
-      formData.append('preview', 'true');
-      if (folderId) {
-        formData.append('folderId', folderId);
+      const params = new URLSearchParams();
+      if (driveFolderId) params.set('driveFolder', driveFolderId);
+      if (query) params.set('q', query);
+      const res = await fetch(`/api/documents/drive?${params}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Erreur inconnue' }));
+        throw new Error(err.error || 'Erreur de chargement');
       }
-      if (tesseractText) {
-        formData.append('tesseractText', tesseractText);
-      }
-
-      console.log('[UploadZone] Sending preview request...');
-      setUploadProgress(60);
-
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => Math.min(prev + 2, 95));
-      }, 500);
-
-      const response = await fetch('/api/documents/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      clearInterval(progressInterval);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
-        throw new Error(errorData.error || errorData.details || 'Erreur lors de l\'analyse');
-      }
-
-      setUploadProgress(100);
-      const result = await response.json();
-      console.log('[UploadZone] Preview result:', result);
-
-      if (result.preview) {
-        // Store file and tesseract text for later confirmation
-        pendingFileRef.current = { file, tesseractText };
-        setPreviewData(result);
-        // Initialize editedData with empty values for manual entry
-        setEditedData({
-          supplier: null,
-          invoiceNumber: null,
-          poNumber: null,
-          date: null,
-          amountHt: null,
-          amountTva: null,
-          amountTtc: null,
-          confidence: result.tesseract?.confidence || 0,
-        });
-        setIsUploading(false);
-        setUploadProgress(0);
-        setUploadStatus('');
-      } else {
-        // No preview mode, directly saved (fallback)
-        if (onUpload) onUpload();
-        if (onUploadComplete) onUploadComplete(result);
-        setIsUploading(false);
-        setUploadProgress(0);
-        setUploadStatus('');
-      }
-
+      const data = await res.json();
+      setFiles(data.files || []);
     } catch (err: any) {
-      console.error('[UploadZone] Upload error:', err);
-      setError(err.message || 'Erreur lors de l\'analyse');
-      setIsUploading(false);
-      setUploadProgress(0);
-      setUploadStatus('');
+      setFilesError(err.message);
+      setFiles([]);
+    } finally {
+      setLoadingFiles(false);
     }
   };
 
-  // Check for inconsistencies via n8n webhook
-  const checkInconsistencies = async () => {
-    if (!folderId) {
-      console.log('[UploadZone] No folderId, skipping inconsistency check');
-      return;
-    }
-
-    setCheckingInconsistencies(true);
-    setInconsistencies(null);
-
+  const loadDbFolders = async () => {
     try {
-      const response = await fetch('https://n8n.mtb-app.com/webhook/36af7eb1-74ac-4cc1-a446-f2626765bce9', {
+      const res = await fetch('/api/folders');
+      if (res.ok) {
+        const data = await res.json();
+        setDbFolders(Array.isArray(data) ? data : []);
+      }
+    } catch { /* silent */ }
+  };
+
+  const openBrowser = () => {
+    setMode('open');
+    setNavStack([{ id: null, name: 'Mon Drive' }]);
+    setSelectedFile(null);
+    setSearchQuery('');
+    setLinkError(null);
+    setTargetFolderId(folderId || '');
+    fetchFiles(null);
+    loadDbFolders();
+  };
+
+  const navigateToFolder = (folder: DriveFile) => {
+    setNavStack(prev => [...prev, { id: folder.id, name: folder.name }]);
+    setSelectedFile(null);
+    setSearchQuery('');
+    fetchFiles(folder.id);
+  };
+
+  const navigateToBreadcrumb = (index: number) => {
+    const newStack = navStack.slice(0, index + 1);
+    setNavStack(newStack);
+    setSelectedFile(null);
+    setSearchQuery('');
+    fetchFiles(newStack[newStack.length - 1].id);
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      fetchFiles(undefined, searchQuery.trim());
+    } else {
+      fetchFiles(currentFolder.id);
+    }
+  };
+
+  const handleLinkFile = async () => {
+    if (!selectedFile) return;
+    setLinking(true);
+    setLinkError(null);
+    try {
+      const res = await fetch('/api/documents/drive', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Basic ' + Buffer.from('multiprint:Admin@1234').toString('base64'),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: 'quelles sont les incoherences dans ce dossier',
-          context: folderId,
-          text: previewData?.tesseract?.text || '',
+          driveFileId: selectedFile.id,
+          fileName: selectedFile.name,
+          mimeType: selectedFile.mimeType,
+          folderId: targetFolderId || null,
+          fileType: selectedFileType,
         }),
       });
-
-      if (!response.ok) {
-        throw new Error('Erreur lors de la vérification');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Erreur inconnue' }));
+        throw new Error(err.error || 'Erreur lors de la liaison');
       }
-
-      const result = await response.json();
-      console.log('[UploadZone] Inconsistency check result:', result);
-
-      // Handle n8n response structure: [{ output: { issues: "true", values: [...] } }]
-      const output = Array.isArray(result) ? result[0]?.output : result.output || result;
-      const hasIssues = output?.issues === 'true' || output?.issues === true;
-
-      setInconsistencies({
-        issues: hasIssues,
-        values: output?.values || null,
-      });
-    } catch (err: any) {
-      console.error('[UploadZone] Inconsistency check error:', err);
-      // On error, allow to continue without blocking
-      setInconsistencies({ issues: false, values: null });
-    } finally {
-      setCheckingInconsistencies(false);
-    }
-  };
-
-  const handleConfirm = async () => {
-    if (!pendingFileRef.current || !editedData) return;
-
-    setIsUploading(true);
-    setUploadStatus('Sauvegarde en cours...');
-    setUploadProgress(50);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', pendingFileRef.current.file);
-      formData.append('fileType', fileType);
-      formData.append('preview', 'false');
-      if (folderId) {
-        formData.append('folderId', folderId);
-      }
-      if (pendingFileRef.current.tesseractText) {
-        formData.append('tesseractText', pendingFileRef.current.tesseractText);
-      }
-      // Send edited data for override
-      formData.append('editedData', JSON.stringify(editedData));
-
-      const response = await fetch('/api/documents/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Erreur lors de la sauvegarde' }));
-        throw new Error(errorData.error || errorData.details || 'Erreur lors de la sauvegarde');
-      }
-
-      const result = await response.json();
-      console.log('[UploadZone] Saved:', result);
-
-      setPreviewData(null);
-      setEditedData(null);
-      setInconsistencies(null);
-      pendingFileRef.current = null;
-      setIsUploading(false);
-      setUploadProgress(0);
-      setUploadStatus('');
-
+      const result = await res.json();
+      setLinkedFileName(selectedFile.name);
+      setMode('success');
       if (onUpload) onUpload();
       if (onUploadComplete) onUploadComplete(result);
-
     } catch (err: any) {
-      console.error('[UploadZone] Confirm error:', err);
-      setError(err.message);
-      setIsUploading(false);
-      setUploadProgress(0);
-      setUploadStatus('');
+      setLinkError(err.message);
+    } finally {
+      setLinking(false);
     }
   };
 
-  const handleCancel = () => {
-    setPreviewData(null);
-    setEditedData(null);
-    pendingFileRef.current = null;
-    setIsUploading(false);
-    setUploadProgress(0);
-    setUploadStatus('');
-  };
-
-  // Preview Modal rendered outside upload zone
-  if (previewData && editedData) {
+  if (mode === 'success') {
     return (
-      <div className="preview-modal" style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border-primary)',
-        borderRadius: '12px',
+      <div style={{
         padding: '24px',
-        maxWidth: '800px',
-        margin: '0 auto',
+        background: 'rgba(34, 197, 94, 0.1)',
+        border: '1px solid #22C55E',
+        borderRadius: '12px',
+        textAlign: 'center',
       }}>
-        <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '24px' }}>OUTPUT</span>
-          Texte OCR extrait - Saisissez les données
-        </h3>
-
-        {/* File info */}
-        <div style={{ background: 'var(--bg-secondary)', padding: '12px', borderRadius: '8px', marginBottom: '16px' }}>
-          <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-            <strong>{previewData.file.name}</strong> ({previewData.file.size})
-          </div>
+        <div style={{ fontSize: '36px', marginBottom: '10px' }}>✅</div>
+        <div style={{ fontWeight: 600, color: '#22C55E', fontSize: '16px', marginBottom: '6px' }}>
+          Fichier lié avec succès
         </div>
-
-        {/* Tesseract text preview - FULL TEXT */}
-        {previewData.tesseract && (
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '8px', fontWeight: 500 }}>
-              Texte extrait par Tesseract ({previewData.tesseract.fullLength} caractères)
-            </div>
-            <div style={{
-              padding: '12px',
-              background: 'var(--bg-secondary)',
-              borderRadius: '8px',
-              fontSize: '13px',
-              maxHeight: '200px',
-              overflow: 'auto',
-              whiteSpace: 'pre-wrap',
-              fontFamily: 'monospace',
-              border: '1px solid var(--border-primary)',
-            }}>
-              {previewData.tesseract.text}
-            </div>
-          </div>
-        )}
-
-        {/* Manual data entry fields */}
-        <div style={{ marginBottom: '16px', padding: '16px', background: 'var(--bg-tertiary)', borderRadius: '8px' }}>
-          <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '12px', color: 'var(--text-primary)' }}>
-            Saisissez les données du document (optionnel)
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Fournisseur</label>
-              <input
-                type="text"
-                placeholder="Nom du fournisseur"
-                value={editedData.supplier || ''}
-                onChange={(e) => setEditedData({ ...editedData, supplier: e.target.value || null })}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: '6px',
-                  background: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>N° Facture</label>
-              <input
-                type="text"
-                placeholder="Numéro de facture"
-                value={editedData.invoiceNumber || ''}
-                onChange={(e) => setEditedData({ ...editedData, invoiceNumber: e.target.value || null })}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: '6px',
-                  background: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>N° Bon de commande</label>
-              <input
-                type="text"
-                placeholder="Numéro PO"
-                value={editedData.poNumber || ''}
-                onChange={(e) => setEditedData({ ...editedData, poNumber: e.target.value || null })}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: '6px',
-                  background: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Date</label>
-              <input
-                type="text"
-                placeholder="Date du document"
-                value={editedData.date || ''}
-                onChange={(e) => setEditedData({ ...editedData, date: e.target.value || null })}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: '6px',
-                  background: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Montant HT</label>
-              <input
-                type="number"
-                placeholder="0.00"
-                value={editedData.amountHt || ''}
-                onChange={(e) => setEditedData({ ...editedData, amountHt: parseFloat(e.target.value) || null })}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: '6px',
-                  background: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Montant TTC</label>
-              <input
-                type="number"
-                placeholder="0.00"
-                value={editedData.amountTtc || ''}
-                onChange={(e) => setEditedData({ ...editedData, amountTtc: parseFloat(e.target.value) || null })}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid var(--border-primary)',
-                  borderRadius: '6px',
-                  background: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                }}
-              />
-            </div>
-          </div>
+        <div style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
+          {linkedFileName}
         </div>
+        <button
+          onClick={() => { setMode('idle'); setLinkedFileName(''); }}
+          style={{
+            padding: '8px 20px',
+            borderRadius: '8px',
+            border: '1px solid var(--border-primary)',
+            background: 'transparent',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            fontSize: '14px',
+          }}
+        >
+          Lier un autre fichier
+        </button>
+      </div>
+    );
+  }
 
-        {/* Inconsistency check section */}
-        <div style={{ marginBottom: '16px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-          <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '12px' }}>
-            Vérification des incohérences
-          </div>
-
-          {!folderId ? (
-            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-              Sélectionnez un dossier pour activer la vérification
-            </div>
-          ) : checkingInconsistencies ? (
-            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ animation: 'spin 1s linear infinite' }}>â</span>
-              Vérification en cours...
-            </div>
-          ) : null}
-
-          {/* Inconsistency results */}
-          {inconsistencies && (
-            <div style={{
-              padding: '12px',
-              borderRadius: '6px',
-              background: inconsistencies.issues ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)',
-              border: `1px solid ${inconsistencies.issues ? '#EF4444' : '#22C55E'}`,
-            }}>
-              {inconsistencies.issues ? (
-                <div>
-                  <div style={{ color: '#EF4444', fontWeight: 600, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>â </span> Incohérences détectées
-                  </div>
-                  {inconsistencies.values && inconsistencies.values.length > 0 && (
-                    <ul style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-primary)', fontSize: '13px' }}>
-                      {inconsistencies.values.map((issue, idx) => (
-                        <li key={idx} style={{ marginBottom: '4px' }}>{issue}</li>
-                      ))}
-                    </ul>
-                  )}
-                  <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    Vous pouvez corriger les données ou confirmer la sauvegarde.
-                  </div>
-                </div>
-              ) : (
-                <div style={{ color: '#22C55E', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>â</span> Aucune incohérence détectée
-                </div>
-              )}
-            </div>
-          )}
+  if (mode === 'idle') {
+    return (
+      <div style={{
+        padding: '28px',
+        border: '2px dashed var(--border-primary)',
+        borderRadius: '12px',
+        textAlign: 'center',
+      }}>
+        <div style={{ fontSize: '44px', marginBottom: '12px' }}>☁️</div>
+        <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '16px', marginBottom: '8px' }}>
+          Lier un fichier depuis Google Drive
         </div>
-
-        {/* Action buttons */}
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button
-            onClick={handleCancel}
-            disabled={isUploading}
-            style={{
-              padding: '10px 24px',
-              border: '1px solid var(--border-primary)',
-              borderRadius: '8px',
-              background: 'transparent',
-              color: 'var(--text-secondary)',
-              cursor: isUploading ? 'wait' : 'pointer',
-            }}
-          >
-            Annuler
-          </button>
-          <button
-            onClick={handleConfirm}
-            disabled={isUploading}
-            style={{
-              padding: '10px 24px',
-              border: 'none',
-              borderRadius: '8px',
-              background: inconsistencies?.issues ? '#EF4444' : 'var(--accent-blue)',
-              color: 'white',
-              fontWeight: 600,
-              cursor: isUploading ? 'wait' : 'pointer',
-            }}
-          >
-            {isUploading ? 'Sauvegarde...' : inconsistencies?.issues ? 'Confirmer avec incohérences' : 'Sauvegarder le document'}
-          </button>
+        <div style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '20px' }}>
+          Parcourez les fichiers partagés avec le compte de service
+        </div>
+        <button
+          onClick={openBrowser}
+          style={{
+            padding: '10px 28px',
+            borderRadius: '8px',
+            border: 'none',
+            background: 'var(--accent-blue)',
+            color: 'white',
+            fontWeight: 600,
+            cursor: 'pointer',
+            fontSize: '15px',
+          }}
+        >
+          ☁️ Parcourir Google Drive
+        </button>
+        <div style={{ marginTop: '12px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+          Compte: achats-drive-reader@scan-achat.iam.gserviceaccount.com
         </div>
       </div>
     );
   }
 
   return (
-    <div
-      className={`upload-zone ${isDragging ? 'dragover' : ''}`}
-      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-      onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
-      onDrop={(e) => {
-        e.preventDefault();
-        setIsDragging(false);
-        if (e.dataTransfer.files.length > 0) processFile(e.dataTransfer.files[0]);
-      }}
-      onClick={() => { if (!isUploading) fileInputRef.current?.click(); }}
-      style={isUploading ? { cursor: 'wait' } : undefined}
-    >
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
-        onChange={(e) => { if (e.target.files?.[0]) processFile(e.target.files[0]); }}
-        style={{ display: 'none' }}
-      />
+    <div style={{ border: '1px solid var(--border-primary)', borderRadius: '12px', overflow: 'hidden' }}>
+      <div style={{
+        padding: '14px 16px',
+        background: 'var(--bg-secondary)',
+        borderBottom: '1px solid var(--border-primary)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
+        <div style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>☁️</span> Google Drive
+        </div>
+        <button
+          onClick={() => setMode('idle')}
+          style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '18px' }}
+        >
+          ✕
+        </button>
+      </div>
 
-      {isUploading ? (
-        <>
-          <div className="upload-zone-icon" style={{ fontSize: '32px' }}>
-            {uploadProgress < 100 ? 'Analyse en cours...' : 'Terminé!'}
+      <div style={{
+        padding: '8px 16px',
+        background: 'var(--bg-tertiary)',
+        borderBottom: '1px solid var(--border-primary)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px',
+        flexWrap: 'wrap',
+        fontSize: '13px',
+      }}>
+        {navStack.map((item, index) => (
+          <Fragment key={index}>
+            {index > 0 && <span style={{ color: 'var(--text-tertiary)' }}>›</span>}
+            <button
+              onClick={() => navigateToBreadcrumb(index)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: index === navStack.length - 1 ? 'var(--text-primary)' : 'var(--accent-blue)',
+                cursor: index === navStack.length - 1 ? 'default' : 'pointer',
+                padding: '2px 4px',
+                fontWeight: index === navStack.length - 1 ? 600 : 400,
+              }}
+            >
+              {item.name}
+            </button>
+          </Fragment>
+        ))}
+      </div>
+
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-primary)' }}>
+        <form onSubmit={handleSearch} style={{ display: 'flex', gap: '8px' }}>
+          <input
+            type="text"
+            placeholder="Rechercher un fichier..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              flex: 1,
+              padding: '7px 12px',
+              borderRadius: '8px',
+              border: '1px solid var(--border-primary)',
+              background: 'var(--bg-primary)',
+              color: 'var(--text-primary)',
+              fontSize: '14px',
+            }}
+          />
+          <button
+            type="submit"
+            style={{
+              padding: '7px 14px',
+              borderRadius: '8px',
+              border: 'none',
+              background: 'var(--accent-blue)',
+              color: 'white',
+              cursor: 'pointer',
+            }}
+          >
+            🔍
+          </button>
+        </form>
+      </div>
+
+      <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+        {loadingFiles ? (
+          <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-secondary)', fontSize: '14px' }}>
+            <div style={{ fontSize: '28px', marginBottom: '8px' }}>⏳</div>
+            Chargement depuis Google Drive...
           </div>
-          <div className="upload-zone-text">
-            <div style={{
-              width: '200px',
-              height: '8px',
-              background: 'var(--bg-tertiary)',
-              borderRadius: '4px',
-              overflow: 'hidden',
-              margin: '0 auto',
-            }}>
-              <div style={{
-                width: `${uploadProgress}%`,
-                height: '100%',
+        ) : filesError ? (
+          <div style={{ padding: '20px', color: 'var(--accent-red, #EF4444)', textAlign: 'center' }}>
+            <div style={{ fontSize: '28px', marginBottom: '8px' }}>⚠️</div>
+            <div style={{ fontWeight: 600, marginBottom: '4px' }}>Erreur de connexion</div>
+            <div style={{ fontSize: '13px', marginBottom: '12px' }}>{filesError}</div>
+            <button
+              onClick={() => fetchFiles(currentFolder.id)}
+              style={{
+                padding: '6px 16px',
+                borderRadius: '6px',
+                border: '1px solid var(--accent-red, #EF4444)',
+                background: 'transparent',
+                color: 'var(--accent-red, #EF4444)',
+                cursor: 'pointer',
+                fontSize: '13px',
+              }}
+            >
+              Réessayer
+            </button>
+          </div>
+        ) : files.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-secondary)', fontSize: '14px' }}>
+            <div style={{ fontSize: '28px', marginBottom: '8px' }}>📂</div>
+            <div style={{ marginBottom: '6px' }}>Aucun fichier accessible</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+              Partagez des fichiers avec:<br />
+              achats-drive-reader@scan-achat.iam.gserviceaccount.com
+            </div>
+          </div>
+        ) : (
+          files.map((file) => {
+            const isFolder = file.mimeType === DRIVE_FOLDER_MIME;
+            const icon = DRIVE_ICONS[file.mimeType] || '📎';
+            const isSelected = selectedFile?.id === file.id;
+
+            return (
+              <div
+                key={file.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '10px 16px',
+                  cursor: 'pointer',
+                  background: isSelected ? 'rgba(59,130,246,0.12)' : 'transparent',
+                  borderLeft: isSelected ? '3px solid var(--accent-blue)' : '3px solid transparent',
+                  transition: 'background 0.12s',
+                }}
+                onClick={() => {
+                  if (isFolder) {
+                    navigateToFolder(file);
+                  } else {
+                    setSelectedFile(isSelected ? null : file);
+                    setLinkError(null);
+                  }
+                }}
+              >
+                <span style={{ fontSize: '22px', flexShrink: 0 }}>{icon}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontWeight: 500,
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {file.name}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    {isFolder ? 'Dossier' : file.size ? `${Math.round(parseInt(file.size) / 1024)} KB` : ''}
+                    {file.modifiedTime && ` · ${new Date(file.modifiedTime).toLocaleDateString('fr-FR')}`}
+                  </div>
+                </div>
+                {isFolder ? (
+                  <span style={{ color: 'var(--text-tertiary)', fontSize: '18px' }}>›</span>
+                ) : (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setSelectedFile(isSelected ? null : file); setLinkError(null); }}
+                    style={{
+                      padding: '4px 12px',
+                      borderRadius: '6px',
+                      border: `1px solid ${isSelected ? 'var(--accent-blue)' : 'var(--border-primary)'}`,
+                      background: isSelected ? 'var(--accent-blue)' : 'transparent',
+                      color: isSelected ? 'white' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {isSelected ? '✓ Sélectionné' : 'Sélectionner'}
+                  </button>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {selectedFile && (
+        <div style={{
+          padding: '14px 16px',
+          borderTop: '1px solid var(--border-primary)',
+          background: 'var(--bg-secondary)',
+        }}>
+          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '10px', fontSize: '14px' }}>
+            📎 <span style={{ color: 'var(--accent-blue)' }}>{selectedFile.name}</span>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '200px' }}>
+              <label style={{ fontSize: '13px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                📂 Dossier:
+              </label>
+              <select
+                value={targetFolderId}
+                onChange={(e) => setTargetFolderId(e.target.value)}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-primary)',
+                  background: 'var(--bg-primary)',
+                  color: 'var(--text-primary)',
+                  fontSize: '13px',
+                }}
+              >
+                <option value=''>— Sans dossier —</option>
+                {dbFolders.map(f => (
+                  <option key={f.id} value={f.id}>{f.icon} {f.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <label style={{ fontSize: '13px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                Type:
+              </label>
+              <select
+                value={selectedFileType}
+                onChange={(e) => setSelectedFileType(e.target.value)}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-primary)',
+                  background: 'var(--bg-primary)',
+                  color: 'var(--text-primary)',
+                  fontSize: '13px',
+                }}
+              >
+                {DRIVE_DOC_TYPES.map(t => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={handleLinkFile}
+              disabled={linking}
+              style={{
+                padding: '8px 22px',
+                borderRadius: '8px',
+                border: 'none',
                 background: 'var(--accent-blue)',
-                transition: 'width 0.2s ease',
-              }} />
-            </div>
-            <div style={{ marginTop: '8px', fontSize: 'var(--fs-sm)' }}>
-              {uploadStatus || (uploadProgress < 50 ? 'Upload du fichier...' :
-               uploadProgress < 90 ? 'Analyse OCR avec Claude...' :
-               'Sauvegarde...')}
-            </div>
+                color: 'white',
+                fontWeight: 600,
+                cursor: linking ? 'wait' : 'pointer',
+                fontSize: '14px',
+                opacity: linking ? 0.7 : 1,
+              }}
+            >
+              {linking ? '⏳ Liaison...' : '🔗 Lier au dossier'}
+            </button>
           </div>
-        </>
-      ) : (
-        <>
-          <div className="upload-zone-icon">📤</div>
-          <div className="upload-zone-text">Glisser-déposer un document ou cliquer pour sélectionner</div>
-          <div className="upload-zone-hint">Formats acceptés: PDF, JPG, PNG - Max 10 MB</div>
-          {error && (
-            <div style={{
-              marginTop: '8px',
-              padding: '8px 12px',
-              background: 'var(--accent-red-soft)',
-              color: 'var(--accent-red)',
-              borderRadius: '6px',
-              fontSize: 'var(--fs-sm)',
-            }}>
-              {error}
+          {linkError && (
+            <div style={{ marginTop: '8px', color: 'var(--accent-red, #EF4444)', fontSize: '13px' }}>
+              ⚠️ {linkError}
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );

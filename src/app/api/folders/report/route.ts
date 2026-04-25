@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 
 const REPORT_WEBHOOK_URL = 'https://n8n.mtb-app.com/webhook/614746dc-8b99-4cc2-af3b-9ac6ed5a5849';
-const WEBHOOK_AUTH = 'Basic ' + Buffer.from('multiprint:Admin@1234').toString('base64');
+const WEBHOOK_AUTH = 'Basic ' + Buffer.from(`${process.env.N8N_USER ?? 'multiprint'}:${process.env.N8N_PASSWORD ?? ''}`).toString('base64');
 
 // ─── POST : lance l'analyse de façon asynchrone ───────────────────────────────
 export async function POST(request: NextRequest) {

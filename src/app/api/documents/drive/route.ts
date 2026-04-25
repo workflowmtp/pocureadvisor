@@ -1,23 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
 import prisma from '@/lib/prisma';
 import { auth } from '@/lib/auth';
 
+export const maxDuration = 30;
+
 function loadCredentials(): { clientEmail: string; privateKey: string } {
-  if (process.env.GOOGLE_DRIVE_PRIVATE_KEY && process.env.GOOGLE_DRIVE_CLIENT_EMAIL) {
-    return {
-      clientEmail: process.env.GOOGLE_DRIVE_CLIENT_EMAIL,
-      privateKey: process.env.GOOGLE_DRIVE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-    };
+  const clientEmail = process.env.GOOGLE_DRIVE_CLIENT_EMAIL;
+  const privateKey = process.env.GOOGLE_DRIVE_PRIVATE_KEY;
+  if (!clientEmail || !privateKey) {
+    throw new Error('GOOGLE_DRIVE_CLIENT_EMAIL et GOOGLE_DRIVE_PRIVATE_KEY doivent être définis dans les variables d\'environnement');
   }
-  const credFile = path.join(process.cwd(), '..', 'scan-achat-6c8d20f9c5cc.json');
-  if (fs.existsSync(credFile)) {
-    const creds = JSON.parse(fs.readFileSync(credFile, 'utf-8'));
-    return { clientEmail: creds.client_email, privateKey: creds.private_key };
-  }
-  throw new Error('Credentials Google Drive introuvables. Définissez GOOGLE_DRIVE_CLIENT_EMAIL et GOOGLE_DRIVE_PRIVATE_KEY dans .env');
+  return { clientEmail, privateKey: privateKey.replace(/\\n/g, '\n') };
 }
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';

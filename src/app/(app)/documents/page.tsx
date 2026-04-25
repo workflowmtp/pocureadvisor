@@ -10,13 +10,22 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
 
-  useEffect(() => {
+  const loadDocs = () => {
     fetch('/api/documents')
       .then(r => r.json())
       .then(d => { setDocs(d.documents || []); setLoading(false); })
       .catch(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { loadDocs(); }, []);
+
+  const handleDelete = async (id: string) => {
+    await fetch(`/api/documents/${id}`, { method: 'DELETE' });
+    setConfirmDelete(null);
+    loadDocs();
+  };
 
   const filtered = docs.filter((d: any) => {
     if (search && !(d.fileName + ' ' + (d.invoiceNumber || '')).toLowerCase().includes(search.toLowerCase())) return false;
@@ -84,7 +93,10 @@ export default function DocumentsPage() {
                     <td className="px-3 py-3 text-xs">{stageLabels[d.pipelineStage] || '—'}</td>
                     <td className="px-3 py-3 text-xs">{d.assignedTo?.fullName || '—'}</td>
                     <td className="px-3 py-3 text-center">
-                      <button onClick={() => router.push(`/ocr/${d.id}`)} className="px-2 py-1 text-xs bg-brand-blue-soft text-brand-blue rounded-full hover:bg-brand-blue hover:text-white transition-colors">Analyser</button>
+                      <div className="flex items-center gap-2 justify-center">
+                        <button onClick={() => router.push(`/ocr/${d.id}`)} className="px-2 py-1 text-xs bg-brand-blue-soft text-brand-blue rounded-full hover:bg-brand-blue hover:text-white transition-colors">Analyser</button>
+                        <button onClick={() => setConfirmDelete({ id: d.id, name: d.fileName })} className="px-2 py-1 text-xs bg-red-50 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-colors">Supprimer</button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -93,6 +105,17 @@ export default function DocumentsPage() {
           </table>
         </div>
       </div>
+      {confirmDelete && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: '14px', padding: '28px', width: '380px', maxWidth: '90vw' }}>
+            <p style={{ fontSize: '15px', marginBottom: '24px' }}>Supprimer &quot;{confirmDelete.name}&quot; ? Cette action est irréversible.</p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmDelete(null)} style={{ padding: '9px 20px', border: '1px solid var(--border-primary)', borderRadius: '8px', background: 'transparent', cursor: 'pointer' }}>Annuler</button>
+              <button onClick={() => handleDelete(confirmDelete.id)} style={{ padding: '9px 20px', border: 'none', borderRadius: '8px', background: '#EF4444', color: 'white', cursor: 'pointer', fontWeight: 600 }}>Supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -6,9 +6,8 @@ const nextConfig: NextConfig = {
     // Enable optimizations
     optimizePackageImports: ['lucide-react', 'recharts', 'date-fns'],
   },
-  images: { 
-    domains: [],
-    // Enable image optimization
+  images: {
+    remotePatterns: [],
     formats: ['image/avif', 'image/webp'],
   },
   // Enable strict mode for better performance

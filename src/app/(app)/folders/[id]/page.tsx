@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import DOMPurify from 'dompurify';
-import { UploadZone } from '@/components/ocr/OcrComponents';
+import { DrivePickerZone } from '@/components/ocr/OcrComponents';
 
 interface Document {
   id: string;
@@ -37,6 +37,8 @@ export default function FolderPage() {
   const [analyzeLoading, setAnalyzeLoading] = useState(false);
   const [reportStatus, setReportStatus] = useState<'idle' | 'processing' | 'ready' | 'error'>('idle');
   const [reportReady, setReportReady] = useState(false);
+  const [confirmDeleteFolder, setConfirmDeleteFolder] = useState(false);
+  const [confirmDeleteDoc, setConfirmDeleteDoc] = useState<{ id: string; name: string } | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -129,6 +131,17 @@ export default function FolderPage() {
 
   const handleDocumentClick = (docId: string) => {
     router.push(`/ocr?doc=${docId}`);
+  };
+
+  const handleDeleteFolder = async () => {
+    await fetch(`/api/folders?id=${folderId}`, { method: 'DELETE' });
+    router.push('/folders');
+  };
+
+  const handleDeleteDocument = async (docId: string) => {
+    await fetch(`/api/documents/${docId}`, { method: 'DELETE' });
+    setConfirmDeleteDoc(null);
+    loadFolder();
   };
 
   const analyzeReport = async () => {
@@ -348,6 +361,17 @@ export default function FolderPage() {
         }}>
           {folder.documents?.length || 0} documents
         </div>
+        {/* Bouton supprimer dossier */}
+        <button
+          onClick={() => setConfirmDeleteFolder(true)}
+          title="Supprimer ce dossier"
+          style={{
+            padding: '10px 16px', background: 'rgba(239,68,68,0.1)', color: '#EF4444',
+            border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px',
+            cursor: 'pointer', fontSize: '14px', fontWeight: 500,
+          }}
+        >🗑 Supprimer</button>
+
         {/* Badge statut analyse */}
         {reportStatus !== 'idle' && (
           <div style={{
@@ -494,21 +518,28 @@ export default function FolderPage() {
                       <span>{new Date(doc.createdAt).toLocaleDateString('fr-FR')}</span>
                     </div>
                   </div>
-                  <div style={{
-                    padding: '6px 14px',
-                    borderRadius: '20px',
-                    fontSize: '12px',
-                    fontWeight: 500,
-                    background: doc.ocrStatus === 'extracted' ? 'rgba(34, 197, 94, 0.15)' :
-                               doc.ocrStatus === 'partial' ? 'rgba(245, 158, 11, 0.15)' :
-                               'var(--bg-tertiary)',
-                    color: doc.ocrStatus === 'extracted' ? '#22C55E' :
-                           doc.ocrStatus === 'partial' ? '#F59E0B' :
-                           'var(--text-secondary)',
-                  }}>
-                    {doc.ocrStatus === 'extracted' ? 'OCR OK' :
-                     doc.ocrStatus === 'partial' ? 'OCR partiel' :
-                     doc.ocrStatus === 'pending' ? 'En attente' : doc.ocrStatus}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{
+                      padding: '6px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: 500,
+                      background: doc.ocrStatus === 'extracted' ? 'rgba(34, 197, 94, 0.15)' :
+                                 doc.ocrStatus === 'partial' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-tertiary)',
+                      color: doc.ocrStatus === 'extracted' ? '#22C55E' :
+                             doc.ocrStatus === 'partial' ? '#F59E0B' : 'var(--text-secondary)',
+                    }}>
+                      {doc.ocrStatus === 'extracted' ? 'OCR OK' :
+                       doc.ocrStatus === 'partial' ? 'OCR partiel' :
+                       doc.ocrStatus === 'pending' ? 'En attente' : doc.ocrStatus}
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteDoc({ id: doc.id, name: doc.fileName }); }}
+                      title="Supprimer ce document"
+                      style={{
+                        width: '30px', height: '30px', flexShrink: 0,
+                        background: 'rgba(239,68,68,0.1)', color: '#EF4444',
+                        border: '1px solid rgba(239,68,68,0.3)', borderRadius: '7px',
+                        cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >✕</button>
                   </div>
                 </div>
               ))}
@@ -518,9 +549,9 @@ export default function FolderPage() {
           {/* Upload section */}
           <div style={{ marginTop: '32px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '20px', color: 'var(--text-primary)' }}>
-              Ajouter des documents
+              Lier un fichier depuis Drive
             </h2>
-            <UploadZone
+            <DrivePickerZone
               folderId={folderId}
               onUploadComplete={() => loadFolder()}
             />
@@ -688,6 +719,35 @@ export default function FolderPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal confirmation suppression dossier */}
+      {confirmDeleteFolder && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: '14px', padding: '28px', width: '400px', maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ fontSize: '20px', marginBottom: '12px' }}>⚠️</div>
+            <p style={{ fontSize: '15px', color: 'var(--text-primary)', marginBottom: '8px', fontWeight: 600 }}>Supprimer le dossier &quot;{folder?.name}&quot; ?</p>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '24px' }}>Tous les documents du dossier resteront dans la bibliothèque. Cette action est irréversible.</p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmDeleteFolder(false)} style={{ padding: '9px 20px', border: '1px solid var(--border-primary)', borderRadius: '8px', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '14px' }}>Annuler</button>
+              <button onClick={handleDeleteFolder} style={{ padding: '9px 20px', border: 'none', borderRadius: '8px', background: '#EF4444', color: 'white', cursor: 'pointer', fontSize: '14px', fontWeight: 600 }}>Supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirmation suppression document */}
+      {confirmDeleteDoc && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: '14px', padding: '28px', width: '380px', maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ fontSize: '20px', marginBottom: '12px' }}>⚠️</div>
+            <p style={{ fontSize: '15px', color: 'var(--text-primary)', marginBottom: '24px' }}>Supprimer &quot;{confirmDeleteDoc.name}&quot; ? Cette action est irréversible.</p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmDeleteDoc(null)} style={{ padding: '9px 20px', border: '1px solid var(--border-primary)', borderRadius: '8px', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '14px' }}>Annuler</button>
+              <button onClick={() => handleDeleteDocument(confirmDeleteDoc.id)} style={{ padding: '9px 20px', border: 'none', borderRadius: '8px', background: '#EF4444', color: 'white', cursor: 'pointer', fontSize: '14px', fontWeight: 600 }}>Supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

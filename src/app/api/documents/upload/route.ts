@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { auth } from '@/lib/auth';
 
+export const maxDuration = 30;
+
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
 const REPORT_WEBHOOK_URL = 'https://n8n.mtb-app.com/webhook/614746dc-8b99-4cc2-af3b-9ac6ed5a5849';
@@ -15,7 +17,7 @@ async function generateFolderReport(folderId: string): Promise<void> {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Basic ' + Buffer.from('multiprint:Admin@1234').toString('base64'),
+        'Authorization': 'Basic ' + Buffer.from(`${process.env.N8N_USER ?? 'multiprint'}:${process.env.N8N_PASSWORD ?? ''}`).toString('base64'),
       },
       body: JSON.stringify({
         query: 'generer le rapport du dossier',

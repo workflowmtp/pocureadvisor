@@ -7,7 +7,7 @@ export const maxDuration = 60;
 
 const OCR_DOCUMENT_CHAT_WEBHOOK_URL = 'https://n8n.mtb-app.com/webhook/d22c20c5-8813-4615-a35b-07a48fc97e12';
 const AGENT_WEBHOOK_URL = 'https://n8n.mtb-app.com/webhook-test/analyse';
-const AGENT_AUTH = 'Basic ' + Buffer.from('multiprint:Admin@1234').toString('base64');
+const AGENT_AUTH = 'Basic ' + Buffer.from(`${process.env.N8N_USER ?? 'multiprint'}:${process.env.N8N_PASSWORD ?? ''}`).toString('base64');
 
 export async function POST(req: NextRequest) {
   try {

@@ -30,6 +30,7 @@ const NAV_PERMISSIONS: Record<string, string> = {
 function NavItemComponent({ item, isActive, collapsed }: { item: NavItem; isActive: boolean; collapsed: boolean }) {
   const { can, hasPermission } = usePermissions();
   const badges = useAppStore((s) => s.badges);
+  const session = useSession();
 
   // Get permission for this nav item
   const navId = item.id.replace('-', '_');
@@ -42,7 +43,6 @@ function NavItemComponent({ item, isActive, collapsed }: { item: NavItem; isActi
 
   // Check role restriction (legacy support)
   if (item.roles) {
-    const session = useSession();
     const roleCode = (session.data?.user as any)?.roleCode;
     if (roleCode && !item.roles.includes(roleCode)) return null;
   }

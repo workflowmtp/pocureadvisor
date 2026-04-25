@@ -28,9 +28,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ type
       break;
     }
     case 'anomalies': {
-      const data = await prisma.anomaly.findMany({ where: { isDeleted: false }, include: { supplier: { select: { name: true } }, user: { select: { fullName: true } } }, orderBy: { dateDetected: 'desc' } });
+      const data = await prisma.anomaly.findMany({ where: { isDeleted: false }, orderBy: { dateDetected: 'desc' } });
       const headers = 'ID;Catégorie;Sévérité;Priorité;Titre;Fournisseur;Utilisateur;Impact;Date;Statut;Résolution';
-      const rows = data.map(a => [a.id, a.category, a.severity, a.priority, '"' + a.title + '"', a.supplier?.name, a.user?.fullName, a.financialImpact, a.dateDetected.toISOString().substring(0, 10), a.status, '"' + (a.resolutionNotes || '') + '"'].join(';'));
+      const rows = data.map(a => [a.id, a.category, a.severity, a.priority, '"' + a.title + '"', a.supplierId || '—', a.userId || '—', a.financialImpact, a.dateDetected.toISOString().substring(0, 10), a.status, '"' + (a.resolutionNotes || '') + '"'].join(';'));
       csv = headers + '\n' + rows.join('\n');
       filename = 'ProcureAdvisor_Anomalies.csv';
       break;

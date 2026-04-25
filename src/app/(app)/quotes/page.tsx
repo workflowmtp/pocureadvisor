@@ -10,33 +10,96 @@ export default function QuotesPage() {
   const [loading, setLoading] = useState(true);
   const [createModal, setCreateModal] = useState(false);
   const [subject, setSubject] = useState('');
-  const [suppliers, setSuppliers] = useState<any[]>([]);
-  const [quoteLines, setQuoteLines] = useState<{supplierId: string, price: string}[]>([
-    { supplierId: '', price: '' },
-    { supplierId: '', price: '' },
-    { supplierId: '', price: '' },
-    { supplierId: '', price: '' },
+  const [allSuppliers, setAllSuppliers] = useState<any[]>([]);
+  const [filteredSuppliers, setFilteredSuppliers] = useState<any[]>([]);
+  const [supplierSearch, setSupplierSearch] = useState<string[]>(['', '', '', '']);
+  const [activeDropdown, setActiveDropdown] = useState<number | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{top: number, left: number, width: number} | null>(null);
+  const [quoteLines, setQuoteLines] = useState<{supplierCode: string, supplierName: string, price: string}[]>([
+    { supplierCode: '', supplierName: '', price: '' },
+    { supplierCode: '', supplierName: '', price: '' },
+    { supplierCode: '', supplierName: '', price: '' },
+    { supplierCode: '', supplierName: '', price: '' },
   ]);
 
+  const handleSupplierSearch = (idx: number, query: string) => {
+    const newSearch = [...supplierSearch];
+    newSearch[idx] = query;
+    setSupplierSearch(newSearch);
+    // Clear selected supplier when typing
+    const newLines = [...quoteLines];
+    if (newLines[idx].supplierCode) {
+      newLines[idx].supplierCode = '';
+      newLines[idx].supplierName = query;
+      setQuoteLines(newLines);
+    }
+    // Local filter from pre-loaded suppliers, excluding already selected
+    const q = query.toLowerCase();
+    const selectedCodes = quoteLines.filter((l, i) => i !== idx && l.supplierCode).map(l => l.supplierCode);
+    if (q.length >= 1) {
+      setFilteredSuppliers(
+        allSuppliers.filter(s =>
+          !selectedCodes.includes(s.code) &&
+          (s.name?.toLowerCase().includes(q) ||
+          s.code?.toLowerCase().includes(q) ||
+          s.city?.toLowerCase().includes(q))
+        ).slice(0, 20)
+      );
+      setActiveDropdown(idx);
+    } else {
+      setFilteredSuppliers([]);
+      setActiveDropdown(null);
+      setDropdownPos(null);
+    }
+  };
+
+  const selectSupplier = (idx: number, sup: any) => {
+    const newLines = [...quoteLines];
+    newLines[idx].supplierCode = sup.code;
+    newLines[idx].supplierName = sup.name;
+    setQuoteLines(newLines);
+    const newSearch = [...supplierSearch];
+    newSearch[idx] = `${sup.code} — ${sup.name}`;
+    setSupplierSearch(newSearch);
+    setFilteredSuppliers([]);
+    setActiveDropdown(null);
+  };
+
+  const loadAllSuppliers = async () => {
+    try {
+      // Load all suppliers from X3 (paginated)
+      let all: any[] = [];
+      let page = 1;
+      let hasMore = true;
+      while (hasMore) {
+        const res = await fetch(`/api/x3/suppliers?page=${page}&size=100`);
+        const json = await res.json();
+        const suppliers = json.suppliers || [];
+        all = [...all, ...suppliers];
+        hasMore = json.pagination?.hasMore && suppliers.length > 0;
+        page++;
+        // Safety limit
+        if (page > 20) break;
+      }
+      setAllSuppliers(all);
+    } catch { /* silent */ }
+  };
+
   const fetchData = () => {
-    Promise.all([
-      fetch('/api/quotes').then(r => r.json()),
-      fetch('/api/suppliers?limit=200').then(r => r.json()),
-    ]).then(([quoteData, supData]) => {
+    fetch('/api/quotes').then(r => r.json()).then(quoteData => {
       setData(quoteData);
-      setSuppliers(supData.suppliers || []);
       setLoading(false);
     }).catch(() => setLoading(false));
   };
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); loadAllSuppliers(); }, []);
 
   async function handleCreate() {
-    if (!subject) return;
+    if (!subject) { alert('Veuillez saisir un objet.'); return; }
     const lines = quoteLines
-      .filter(l => l.supplierId && l.supplierId !== '')
+      .filter(l => l.supplierCode && l.supplierCode !== '')
       .map(l => ({
-        supplierId: l.supplierId === '_custom' ? null : l.supplierId,
-        supplierName: l.supplierId === '_custom' ? 'Autre fournisseur' : suppliers.find(s => s.id === l.supplierId)?.name || '',
+        supplierId: null,
+        supplierName: l.supplierName || l.supplierCode,
         unitPrice: parseFloat(l.price) || 0,
       }));
     
@@ -45,16 +108,25 @@ export default function QuotesPage() {
       return;
     }
 
-    const res = await fetch('/api/quotes', { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify({ subject, lines }) 
-    });
-    const comp = await res.json();
-    setCreateModal(false); 
-    setSubject('');
-    setQuoteLines([{ supplierId: '', price: '' }, { supplierId: '', price: '' }, { supplierId: '', price: '' }, { supplierId: '', price: '' }]);
-    router.push(`/quotes/${comp.id}`);
+    try {
+      const res = await fetch('/api/quotes', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ subject, lines }) 
+      });
+      const comp = await res.json();
+      if (!res.ok) {
+        alert('Erreur: ' + (comp.error || comp.message || JSON.stringify(comp)));
+        return;
+      }
+      setCreateModal(false); 
+      setSubject('');
+      setQuoteLines([{ supplierCode: '', supplierName: '', price: '' }, { supplierCode: '', supplierName: '', price: '' }, { supplierCode: '', supplierName: '', price: '' }, { supplierCode: '', supplierName: '', price: '' }]);
+      setSupplierSearch(['', '', '', '']);
+      fetchData();
+    } catch (err: any) {
+      alert('Erreur réseau: ' + err.message);
+    }
   }
 
   const comparisons = data?.comparisons || [];
@@ -73,7 +145,7 @@ export default function QuotesPage() {
       {/* Cards Grid */}
       <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))' }}>
         {comparisons.map((c: any) => {
-          const lines = c.lines || [];
+          const lines = c.quoteLines || [];
           let bestTCO = Infinity;
           let bestSupplier = '';
           for (const l of lines) {
@@ -117,6 +189,23 @@ export default function QuotesPage() {
         )}
       </div>
 
+      {/* Autocomplete dropdown portal (fixed position to avoid modal overflow clipping) */}
+      {filteredSuppliers.length > 0 && activeDropdown !== null && dropdownPos && !quoteLines[activeDropdown]?.supplierCode && (
+        <div className="fixed z-[100] bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-lg shadow-lg max-h-48 overflow-y-auto"
+          style={{ top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width }}>
+          {filteredSuppliers.map(s => (
+            <div
+              key={s.code}
+              onClick={() => selectSupplier(activeDropdown, s)}
+              className="px-3 py-2 cursor-pointer hover:bg-[var(--bg-card-hover)] transition-colors border-b border-[var(--border-secondary)] last:border-0"
+            >
+              <div className="text-sm font-medium text-[var(--text-primary)]">{s.name}</div>
+              <div className="text-[10px] text-[var(--text-tertiary)] font-mono">{s.code} · {s.country} · {s.currency}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {createModal && (
         <div className="modal-overlay fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setCreateModal(false)}>
           <div className="modal bg-[var(--bg-modal)] border border-[var(--border-primary)] rounded-[var(--radius-xl)] w-full max-w-[650px] max-h-[85vh] overflow-y-auto shadow-[var(--shadow-xl)]" onClick={e => e.stopPropagation()}>
@@ -139,36 +228,40 @@ export default function QuotesPage() {
               <div className="font-semibold text-[var(--fs-sm)] text-[var(--text-primary)] mb-3">Fournisseurs à comparer (2 à 5)</div>
               {quoteLines.map((line, idx) => (
                 <div key={idx} className="grid grid-cols-2 gap-3 mb-2">
-                  <div className="login-field mb-0">
+                  <div className="login-field mb-0 relative">
                     <label className="login-label block text-[var(--fs-sm)] font-medium text-[var(--text-secondary)] mb-2">
                       Fournisseur {idx + 1}{idx < 2 ? ' *' : ''}
                     </label>
-                    <select 
-                      value={line.supplierId} 
-                      onChange={e => {
-                        const newLines = [...quoteLines];
-                        newLines[idx].supplierId = e.target.value;
-                        setQuoteLines(newLines);
+                    <input
+                      type="text"
+                      value={supplierSearch[idx]}
+                      onChange={e => handleSupplierSearch(idx, e.target.value)}
+                      onFocus={(e) => {
+                        if (supplierSearch[idx].length >= 1) {
+                          handleSupplierSearch(idx, supplierSearch[idx]);
+                        }
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
                       }}
-                      className="filter-select w-full py-3 px-[14px] bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-[var(--radius-md)] text-[var(--fs-sm)] text-[var(--text-primary)] outline-none focus:border-[var(--accent-blue)] transition-all cursor-pointer"
-                    >
-                      <option value="">— Sélectionner —</option>
-                      {suppliers.map(s => <option key={s.id} value={s.id}>{s.code} — {s.name}</option>)}
-                      <option value="_custom">Autre (saisie manuelle)</option>
-                    </select>
+                      placeholder="Rechercher fournisseur X3..."
+                      className="login-input w-full py-3 px-[14px] bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-[var(--radius-md)] text-[var(--fs-sm)] text-[var(--text-primary)] outline-none focus:border-[var(--accent-blue)] transition-all"
+                    />
+                    {line.supplierCode && (
+                      <span className="absolute right-3 top-[38px] text-brand-green text-xs">✓</span>
+                    )}
                   </div>
                   <div className="login-field mb-0">
-                    <label className="login-label block text-[var(--fs-sm)] font-medium text-[var(--text-secondary)] mb-2">Prix unitaire (FCFA)</label>
-                    <input 
-                      type="number" 
-                      value={line.price} 
+                    <label className="login-label block text-[var(--fs-sm)] font-medium text-[var(--text-secondary)] mb-2">Prix unitaire ({line.currency || 'FCFA'})</label>
+                    <input
+                      type="number"
+                      value={line.price}
                       onChange={e => {
                         const newLines = [...quoteLines];
                         newLines[idx].price = e.target.value;
                         setQuoteLines(newLines);
                       }}
                       className="login-input w-full py-3 px-[14px] bg-[var(--bg-input)] border border-[var(--border-primary)] rounded-[var(--radius-md)] text-[var(--fs-base)] text-[var(--text-primary)] outline-none focus:border-[var(--accent-blue)] focus:shadow-[0_0_0_3px_var(--accent-blue-soft)] transition-all"
-                      placeholder="Prix unitaire" 
+                      placeholder="Prix unitaire"
                     />
                   </div>
                 </div>
