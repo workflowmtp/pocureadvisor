@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { formatCurrency, truncate } from '@/lib/format';
-import { ANOMALY_CATEGORY_ICONS, SEVERITY_CONFIG } from '@/lib/constants';
+import { ANOMALY_CATEGORY_ICONS, SEVERITY_CONFIG, POLES } from '@/lib/constants';
 
 type Dimension = 'supplier' | 'user' | 'pole' | 'category';
 const CATEGORIES = ['Prix', 'Quantité', 'Procédure', 'Document', 'Fraude', 'Conformité', 'Discipline', 'Qualité', 'Risque'];
@@ -32,7 +32,7 @@ export default function AuditMatrixPage() {
   // KPIs
   const total = anomalies.length;
   const openCount = anomalies.filter(a => a.status !== 'resolved').length;
-  const totalImpact = anomalies.filter(a => a.status !== 'resolved').reduce((s: number, a: any) => s + (a.financialImpact || 0), 0);
+  const totalImpact = anomalies.reduce((s: number, a: any) => s + (a.financialImpact || 0), 0);
 
   // Find max supplier
   const supCounts: Record<string, { name: string; count: number }> = {};
@@ -57,7 +57,7 @@ export default function AuditMatrixPage() {
     let key = '', label = '';
     if (dimension === 'supplier') { if (!a.supplier) return; key = a.supplier.id; label = truncate(a.supplier.name, 25); }
     else if (dimension === 'user') { if (!a.user) return; key = a.user.id; label = truncate(a.user.fullName, 25); }
-    else if (dimension === 'pole') { key = a.poleId || 'N/A'; label = a.poleId || 'N/A'; }
+    else if (dimension === 'pole') { if (!a.poleId) return; key = a.poleId; label = POLES.find(p => p.id === a.poleId)?.name || a.poleId; }
     else if (dimension === 'category') { key = a.severity; label = SEVERITY_CONFIG[a.severity as keyof typeof SEVERITY_CONFIG]?.label || a.severity; }
     if (!key) return;
     if (!rows[key]) rows[key] = { label, cats: {} };
@@ -88,7 +88,7 @@ export default function AuditMatrixPage() {
   }
 
   function exportCSV() {
-    const rows = anomalies.map(a => [a.id, a.category, a.severity, a.title, a.supplier?.name || '', a.financialImpact || '', a.dateDetected, a.status].join(';'));
+    const rows = anomalies.map(a => [a.id, a.category, a.severity, a.title, a.supplierId || '', a.financialImpact || '', a.dateDetected, a.status].join(';'));
     const csv = '\ufeff' + 'ID;Catégorie;Sévérité;Titre;Fournisseur;Impact;Date;Statut\n' + rows.join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -115,29 +115,44 @@ export default function AuditMatrixPage() {
       {/* KPIs */}
       <div className="kpi-grid" style={{ marginBottom: 'var(--sp-5)' }}>
         <div className="kpi-card">
-          <div className="kpi-icon" style={{ background: 'var(--accent-blue-soft)', color: 'var(--accent-blue)' }}>📊</div>
-          <div className="kpi-value">{total}</div>
-          <div className="kpi-label">Total anomalies</div>
+          <div className="kpi-icon blue">📊</div>
+          <div className="kpi-content">
+            <div className="kpi-label">Total anomalies</div>
+            <div className="kpi-value">{total}</div>
+            <div className="kpi-trend neutral">→ Stable</div>
+          </div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-icon" style={{ background: 'var(--accent-red-soft)', color: 'var(--accent-red)' }}>🔴</div>
-          <div className="kpi-value">{openCount}</div>
-          <div className="kpi-label">Non résolues</div>
+          <div className="kpi-icon red">🔴</div>
+          <div className="kpi-content">
+            <div className="kpi-label">Non résolues</div>
+            <div className="kpi-value">{openCount}</div>
+            <div className="kpi-trend neutral">→ Stable</div>
+          </div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-icon" style={{ background: 'var(--accent-orange-soft)', color: 'var(--accent-orange)' }}>💰</div>
-          <div className="kpi-value">{formatCurrency(totalImpact)}</div>
-          <div className="kpi-label">Impact financier</div>
+          <div className="kpi-icon orange">💰</div>
+          <div className="kpi-content">
+            <div className="kpi-label">Impact financier</div>
+            <div className="kpi-value">{formatCurrency(totalImpact)}</div>
+            <div className="kpi-trend neutral">→ Stable</div>
+          </div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-icon" style={{ background: 'var(--accent-purple-soft)', color: 'var(--accent-purple)' }}>🏭</div>
-          <div className="kpi-value">{maxSup ? truncate(maxSup.name, 16) : '—'} ({maxSup?.count || 0})</div>
-          <div className="kpi-label">Fourn. + risqué</div>
+          <div className="kpi-icon purple">🏭</div>
+          <div className="kpi-content">
+            <div className="kpi-label">Fourn. + risqué</div>
+            <div className="kpi-value">{maxSup ? truncate(maxSup.name, 16) : '—'} ({maxSup?.count || 0})</div>
+            <div className="kpi-trend neutral">→ Stable</div>
+          </div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-icon" style={{ background: 'var(--accent-cyan-soft, rgba(6,182,212,0.15))', color: 'var(--accent-cyan, #06B6D4)' }}>📋</div>
-          <div className="kpi-value">{maxCatEntry ? maxCatEntry[0] : '—'} ({maxCatEntry?.[1] || 0})</div>
-          <div className="kpi-label">Catég. dominante</div>
+          <div className="kpi-icon cyan">📋</div>
+          <div className="kpi-content">
+            <div className="kpi-label">Catég. dominante</div>
+            <div className="kpi-value">{maxCatEntry ? maxCatEntry[0] : '—'} ({maxCatEntry?.[1] || 0})</div>
+            <div className="kpi-trend neutral">→ Stable</div>
+          </div>
         </div>
       </div>
 
@@ -253,7 +268,7 @@ export default function AuditMatrixPage() {
                       const statusConf = STATUS_BADGES[a.status] || STATUS_BADGES.open;
                       return (
                         <tr key={a.id}>
-                          <td className="table-mono" style={{ fontSize: 'var(--fs-xs)' }}>{a.id.substring(0, 8).toUpperCase()}</td>
+                          <td className="table-mono" style={{ fontSize: 'var(--fs-xs)' }}>{a.id.toUpperCase()}</td>
                           <td><span className={`badge ${sevConf.cls}`}>{sevConf.label}</span></td>
                           <td style={{ fontSize: 'var(--fs-xs)', maxWidth: '220px' }}>{truncate(a.title, 40)}</td>
                           <td className="table-amount">{a.financialImpact ? formatCurrency(a.financialImpact) : '—'}</td>
